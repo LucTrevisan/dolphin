@@ -1,0 +1,1810 @@
+/* EV Experience XR — HUD minimalista, sem cobrir o veículo.
+   O HUD inteiro tem pointer-events: none; só os controles recebem clique,
+   para que arrastar sobre a cena continue girando a câmera. */
+
+:root {
+  --bg: #08111f;
+  --blue: #00b8ff;
+  --cyan: #00e5ff;
+  --orange: #ff9f43;
+  --text: #f5f7fa;
+  --muted: rgba(245, 247, 250, 0.62);
+  --glass: rgba(8, 17, 31, 0.68);
+  --glass-strong: rgba(8, 17, 31, 0.86);
+  --line: rgba(0, 229, 255, 0.22);
+  --radius: 16px;
+  --gutter: 20px;
+  --font: "Segoe UI", Roboto, "Helvetica Neue", Arial, system-ui, sans-serif;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#renderCanvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  outline: none;
+  touch-action: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* ------------------------------------------------------------------ HUD */
+
+.hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.hud > * {
+  pointer-events: auto;
+}
+
+.hud-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: max(16px, env(safe-area-inset-top)) var(--gutter) 0;
+  pointer-events: none;
+}
+
+.hud-top > * {
+  pointer-events: auto;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  user-select: none;
+}
+
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--glass);
+  border: 1px solid var(--line);
+  fill: var(--cyan);
+  filter: drop-shadow(0 0 8px rgba(0, 229, 255, 0.55));
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6);
+}
+
+.brand-text strong {
+  font-size: 16px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.brand-text span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.hud-top-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chip {
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  background: var(--glass);
+  border: 1px solid rgba(245, 247, 250, 0.14);
+  backdrop-filter: blur(10px);
+  cursor: default;
+}
+
+.chip[data-state="in-xr"] {
+  color: var(--cyan);
+  border-color: var(--line);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(0, 184, 255, 0.12);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn:hover {
+  background: rgba(0, 229, 255, 0.2);
+}
+
+.btn:focus-visible,
+.tool:focus-visible,
+.icon-btn:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+
+.btn-vr {
+  border: none;
+  color: #04121f;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--blue), var(--cyan));
+  box-shadow: 0 0 0 1px rgba(0, 229, 255, 0.4), 0 6px 24px rgba(0, 200, 255, 0.35);
+}
+
+.btn-vr:hover {
+  background: linear-gradient(135deg, #2cc6ff, #5df0ff);
+  transform: translateY(-1px);
+}
+
+.btn-vr svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
+
+.btn-ar {
+  border: 1px solid var(--orange);
+  color: var(--text);
+  font-weight: 700;
+  background: rgba(255, 159, 67, 0.14);
+  box-shadow: 0 6px 22px rgba(255, 159, 67, 0.22);
+}
+
+.btn-ar:hover {
+  background: rgba(255, 159, 67, 0.26);
+  transform: translateY(-1px);
+}
+
+.btn-ar svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: var(--orange);
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: rgba(245, 247, 250, 0.2);
+}
+
+/* ------------------------------------------------------------------ cartão do veículo */
+
+.vehicle-card {
+  position: absolute;
+  top: calc(max(16px, env(safe-area-inset-top)) + 58px);
+  left: var(--gutter);
+  width: 250px;
+  padding: 14px 16px 12px;
+  border-radius: var(--radius);
+  background: var(--glass);
+  border: 1px solid rgba(245, 247, 250, 0.1);
+  backdrop-filter: blur(12px);
+}
+
+.eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cyan);
+}
+
+.vehicle-card h2 {
+  margin: 4px 0 8px;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border: 1px solid currentColor;
+  color: var(--cyan);
+}
+
+.badge[data-kind="provisional"] {
+  color: var(--orange);
+}
+
+.dims {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 184, 255, 0.2);
+}
+
+.dims dt {
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.dims dd {
+  margin: 2px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ barra de ferramentas */
+
+.toolbar {
+  position: absolute;
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100vw - 2 * 16px);
+  padding: 6px;
+  border-radius: 20px;
+  background: var(--glass);
+  border: 1px solid rgba(245, 247, 250, 0.1);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.toolbar-group {
+  display: flex;
+  gap: 4px;
+}
+
+.toolbar-divider {
+  flex: none;
+  width: 1px;
+  height: 34px;
+  margin: 0 4px;
+  background: rgba(245, 247, 250, 0.12);
+}
+
+.tool {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 66px;
+  height: 58px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: transparent;
+  color: rgba(245, 247, 250, 0.74);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.tool svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.tool:hover {
+  background: rgba(0, 229, 255, 0.08);
+  color: var(--text);
+}
+
+.tool[aria-pressed="true"],
+.tool[aria-expanded="true"] {
+  color: var(--cyan);
+  background: rgba(0, 229, 255, 0.12);
+  border-color: var(--line);
+}
+
+/* ------------------------------------------------------------------ dica, toast, ajuda */
+
+.hint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 84px);
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--muted);
+  background: rgba(8, 17, 31, 0.5);
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity 0.6s ease;
+}
+
+.hint.is-hidden {
+  opacity: 0;
+}
+
+.toast {
+  position: absolute;
+  top: calc(max(16px, env(safe-area-inset-top)) + 64px);
+  left: 50%;
+  transform: translate(-50%, -8px);
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  text-align: center;
+  background: var(--glass-strong);
+  border: 1px solid var(--line);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.toast.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.help-panel {
+  position: absolute;
+  right: var(--gutter);
+  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 84px);
+  width: 360px;
+  max-height: calc(100dvh - 200px);
+  overflow-y: auto;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  background: var(--glass-strong);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(14px);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.help-panel header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.help-panel h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.help-panel h4 {
+  margin: 14px 0 4px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cyan);
+}
+
+.help-panel ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.help-panel b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.help-note {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  color: var(--text);
+  background: rgba(245, 247, 250, 0.08);
+}
+
+/* ------------------------------------------------------------------ carregamento */
+
+.loader {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: radial-gradient(ellipse at 50% 40%, #0d2036 0%, var(--bg) 70%);
+  transition: opacity 0.6s ease;
+}
+
+.loader.is-leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.loader-card {
+  width: min(420px, 100%);
+  text-align: center;
+}
+
+.loader-mark {
+  width: 64px;
+  height: 64px;
+  fill: var(--cyan);
+  filter: drop-shadow(0 0 18px rgba(0, 229, 255, 0.7));
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+.loader h1 {
+  margin: 18px 0 4px;
+  font-size: 26px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.loader-sub {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.loader-institution {
+  margin: 0 0 28px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cyan);
+}
+
+.progress {
+  position: relative;
+  height: 4px;
+  width: min(300px, 80%);
+  margin: 0 auto;
+  border-radius: 4px;
+  overflow: hidden;
+  background: rgba(245, 247, 250, 0.1);
+}
+
+.progress-bar {
+  height: 100%;
+  width: 0;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--blue), var(--cyan));
+  box-shadow: 0 0 12px var(--cyan);
+  transition: width 0.2s ease;
+}
+
+.progress.is-indeterminate .progress-bar {
+  width: 35%;
+  animation: indeterminate 1.2s ease-in-out infinite;
+}
+
+.loader-status {
+  min-height: 1.5em;
+  margin: 14px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.loader.has-error .progress {
+  display: none;
+}
+
+.loader.has-error .loader-status {
+  color: var(--orange);
+}
+
+.loader-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.context-lost {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 11;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  border-radius: 14px;
+  background: var(--glass-strong);
+  border: 1px solid var(--line);
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 229, 255, 0.25);
+  border-top-color: var(--cyan);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.55;
+    transform: scale(0.94);
+  }
+}
+
+@keyframes indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ------------------------------------------------------------------ raio X: botão e legendas */
+
+.tool-xray[aria-pressed="true"] {
+  color: #04121f;
+  background: linear-gradient(135deg, var(--blue), var(--cyan));
+  border-color: transparent;
+  box-shadow: 0 0 18px rgba(0, 229, 255, 0.45);
+}
+
+/* Legendas do raio X (desktop/celular): camada sem cliques, só os botões recebem. */
+.hud > .callouts {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transition: opacity 0.2s linear;
+}
+
+.callout-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.callout-lines line {
+  stroke: var(--c);
+  stroke-width: 1.2;
+  stroke-opacity: 0.75;
+}
+
+.callout-lines circle {
+  fill: var(--c);
+  stroke: rgba(8, 17, 31, 0.9);
+  stroke-width: 2;
+}
+
+.callout {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--c);
+  background: rgba(8, 17, 31, 0.82);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 0.15s ease, opacity 0.2s ease;
+  will-change: transform;
+}
+
+.callout::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow: 0 0 8px var(--c);
+}
+
+.callout small {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--orange);
+}
+
+.callout:hover,
+.callout.is-active {
+  background: rgba(16, 40, 64, 0.95);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--c) 45%, transparent);
+}
+
+.callout.is-dimmed {
+  opacity: 0.5;
+}
+
+.callout:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------ fluxo de energia + simulação */
+
+.tool-energy[aria-pressed="true"] {
+  color: #04121f;
+  background: linear-gradient(135deg, #ffb86b, var(--orange));
+  border-color: transparent;
+  box-shadow: 0 0 18px rgba(255, 159, 67, 0.45);
+}
+
+/* Com o painel de energia aberto, o cartão do veículo mostra só nome e status. */
+body.energy-open .vehicle-card :is(.dims, .credit) {
+  display: none;
+}
+
+/* Notebook de tela baixa: textos longos da energia ficam em "Explicação" e os controles cabem sem rolar. */
+@media (min-width: 721px) and (max-height: 820px) {
+  .energy-panel .ep-more {
+    display: inline-block;
+  }
+  .energy-panel:not(.is-expanded) :is(.ep-text, .ep-session, .ep-disclaimer) {
+    display: none;
+  }
+}
+
+.energy-panel {
+  position: absolute;
+  top: calc(max(16px, env(safe-area-inset-top)) + 58px + 112px);
+  left: var(--gutter);
+  width: 340px;
+  max-height: calc(100dvh - 58px - 112px - 104px - max(16px, env(safe-area-inset-top)));
+  overflow-y: auto;
+  padding: 12px 16px 14px;
+  border-radius: var(--radius);
+  background: var(--glass-strong);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(14px);
+  animation: rise 0.3s ease;
+  scrollbar-width: thin;
+}
+
+.energy-panel header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-right: -8px;
+}
+
+.ep-more {
+  display: none;
+  margin-left: auto;
+  margin-right: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--cyan);
+  cursor: pointer;
+}
+
+.ep-eyebrow,
+.ep-sim h4 {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cyan);
+}
+
+.ep-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1.45fr 0.9fr;
+  gap: 4px;
+  margin: 4px 0 10px;
+  padding: 3px;
+  border-radius: 12px;
+  background: rgba(245, 247, 250, 0.06);
+}
+
+.ep-tabs button,
+.ep-charge-type button {
+  padding: 7px 4px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.ep-tabs button[aria-selected="true"],
+.ep-charge-type button[aria-pressed="true"] {
+  color: #04121f;
+  background: linear-gradient(135deg, var(--blue), var(--cyan));
+}
+
+.ep-charge-type button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.energy-panel h3 {
+  margin: 0 0 4px;
+  font-size: 14.5px;
+}
+
+.ep-text {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: rgba(245, 247, 250, 0.82);
+}
+
+.ep-chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 18px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.ep-chain li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 9px;
+  border-radius: 9px;
+  border: 1px solid var(--c);
+  background: color-mix(in srgb, var(--c) 10%, transparent);
+}
+
+.ep-chain li:not(:last-child)::after {
+  content: "→";
+  position: absolute;
+  right: -15px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ep-chain b {
+  font-size: 11.5px;
+}
+
+.ep-chain small {
+  font-size: 9.5px;
+  color: var(--c);
+}
+
+.ep-key {
+  display: flex;
+  gap: 14px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.ep-key li::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow: 0 0 6px var(--c);
+}
+
+.ep-sim {
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 184, 255, 0.2);
+}
+
+.ep-sim h4 {
+  margin: 0 0 8px;
+}
+
+.ep-stats {
+  display: grid;
+  grid-template-columns: 1fr 1.15fr 1fr;
+  gap: 8px;
+}
+
+.ep-stats span {
+  display: block;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ep-stats b {
+  font-size: 21px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ep-stats small {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.ep-stats em {
+  display: block;
+  font-size: 10px;
+  font-style: normal;
+  color: var(--muted);
+}
+
+.ep-soc {
+  display: block;
+  height: 4px;
+  margin-top: 3px;
+  border-radius: 4px;
+  background: rgba(245, 247, 250, 0.12);
+  overflow: hidden;
+}
+
+.ep-soc > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--blue), var(--cyan));
+  transition: width 0.2s linear;
+}
+
+.ep-soc > i[data-level="low"] {
+  background: var(--orange);
+}
+
+.ep-soc > i[data-level="charging"] {
+  background: linear-gradient(90deg, var(--blue), var(--cyan), var(--blue));
+  background-size: 200% 100%;
+  animation: charging 1.2s linear infinite;
+}
+
+.ep-state {
+  min-height: 2.4em;
+  margin: 8px 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+#simState {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-weight: 700;
+  color: var(--text);
+  border: 1px solid rgba(245, 247, 250, 0.25);
+}
+
+#simState[data-state="acelerando"] {
+  color: var(--cyan);
+  border-color: var(--cyan);
+}
+
+#simState[data-state="regenerando"] {
+  color: var(--orange);
+  border-color: var(--orange);
+}
+
+#simState[data-state="recarregando"] {
+  color: var(--blue);
+  border-color: var(--blue);
+}
+
+.ep-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.ep-controls-charge {
+  grid-template-columns: 1fr;
+}
+
+.ep-charge-type {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 12px;
+  background: rgba(245, 247, 250, 0.06);
+}
+
+.ep-hold,
+.ep-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(0, 184, 255, 0.1);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none; /* iOS: toque longo não abre o menu de contexto */
+  touch-action: none;
+}
+
+#btnBrake {
+  border-color: rgba(255, 159, 67, 0.5);
+  background: rgba(255, 159, 67, 0.1);
+}
+
+.ep-hold[aria-pressed="true"] {
+  color: #04121f;
+  background: linear-gradient(135deg, var(--blue), var(--cyan));
+}
+
+#btnBrake[aria-pressed="true"] {
+  background: linear-gradient(135deg, #ffb86b, var(--orange));
+}
+
+.ep-primary {
+  color: #04121f;
+  border: none;
+  background: linear-gradient(135deg, var(--blue), var(--cyan));
+}
+
+.ep-primary[aria-pressed="true"] {
+  color: var(--text);
+  background: rgba(255, 159, 67, 0.18);
+  border: 1px solid var(--orange);
+}
+
+kbd {
+  padding: 1px 5px;
+  border-radius: 4px;
+  font: 600 10px var(--font);
+  border: 1px solid currentColor;
+  opacity: 0.7;
+}
+
+.ep-session {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.ep-disclaimer {
+  margin: 6px 0 0;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: rgba(245, 247, 250, 0.45);
+}
+
+@keyframes charging {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* ------------------------------------------------------------------ painel educativo */
+
+.component-panel {
+  --accent: var(--cyan);
+  position: absolute;
+  top: calc(max(16px, env(safe-area-inset-top)) + 58px);
+  right: var(--gutter);
+  width: 360px;
+  max-height: calc(100dvh - 58px - 120px - max(16px, env(safe-area-inset-top)));
+  overflow-y: auto;
+  padding: 16px 20px 18px;
+  border-radius: var(--radius);
+  background: linear-gradient(160deg, rgba(10, 24, 42, 0.92), rgba(8, 17, 31, 0.9));
+  border: 1px solid var(--line);
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2), 0 0 32px color-mix(in srgb, var(--accent) 22%, transparent);
+  backdrop-filter: blur(14px);
+}
+
+.component-panel.is-entering {
+  animation: slide-in 0.32s ease;
+}
+
+.component-panel header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-right: -8px;
+}
+
+.cp-tag {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.component-panel h3 {
+  margin: 2px 0 10px;
+  font-size: 22px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.cp-illustrative {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--orange);
+  background: rgba(255, 159, 67, 0.1);
+  border: 1px dashed rgba(255, 159, 67, 0.55);
+}
+
+.cp-sections {
+  margin: 0;
+}
+
+.cp-sections dt {
+  margin-top: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.cp-sections dd {
+  margin: 3px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: rgba(245, 247, 250, 0.9);
+}
+
+.tooltip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 4;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--text);
+  background: var(--glass-strong);
+  border: 1px solid var(--line);
+  pointer-events: none;
+}
+
+.tooltip span {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+/* ------------------------------------------------------------------ Etapa 4: interface retrátil */
+
+.icon-btn-glass {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 247, 250, 0.14);
+  background: var(--glass);
+  backdrop-filter: blur(10px);
+}
+
+.icon-btn-glass svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+}
+
+.icon-btn-glass[aria-pressed="true"] {
+  color: var(--cyan);
+  border-color: var(--line);
+}
+
+/* Interface oculta: só o modelo 3D, o olho e o botão de VR. */
+body.ui-hidden :is(.vehicle-card, .toolbar, .toolbar-restore, .callouts, .component-panel, .energy-panel, .hint, .tooltip, .help-panel, .brand-text) {
+  display: none !important;
+}
+
+/* Cartão do veículo recolhível */
+.vehicle-toggle {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vehicle-toggle .eyebrow {
+  grid-column: 1;
+}
+
+.vehicle-toggle h2 {
+  grid-column: 1;
+}
+
+.vehicle-toggle .chevron {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 2;
+  transition: transform 0.2s ease;
+}
+
+.vehicle-card.is-collapsed .chevron {
+  transform: rotate(-90deg);
+}
+
+.vehicle-card.is-collapsed .vehicle-details {
+  display: none;
+}
+
+.vehicle-card.is-collapsed h2 {
+  margin-bottom: 0;
+}
+
+.credit {
+  margin: 10px 0 0;
+  font-size: 10px;
+  line-height: 1.4;
+  color: rgba(245, 247, 250, 0.45);
+}
+
+/* Botões só do celular */
+.tool-views,
+.tool-retract {
+  display: none;
+}
+
+.tool-explode[aria-pressed="true"] {
+  color: #04121f;
+  background: linear-gradient(135deg, #ffb86b, var(--orange));
+  border-color: transparent;
+}
+
+.toolbar-restore {
+  position: absolute;
+  left: 50%;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--glass-strong);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.toolbar-restore svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+body.toolbar-hidden .toolbar {
+  display: none;
+}
+
+/* Folhas retráteis: alça no topo; recolhidas mostram só o cabeçalho e o título. */
+.sheet-handle {
+  display: block;
+  width: 100%;
+  height: 16px;
+  margin: -6px 0 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: grab;
+  touch-action: none;
+}
+
+.sheet-handle i {
+  display: block;
+  width: 42px;
+  height: 4px;
+  margin: 0 auto;
+  border-radius: 4px;
+  background: rgba(245, 247, 250, 0.3);
+}
+
+.sheet-handle:hover i {
+  background: var(--cyan);
+}
+
+.sheet.is-collapsed > :not(header):not(.sheet-handle):not(h3) {
+  display: none !important;
+}
+
+.sheet.is-collapsed h3 {
+  margin-bottom: 0;
+}
+
+.cp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.cp-sections .cp-model {
+  color: var(--cyan);
+}
+
+.cp-sections dd.cp-model {
+  color: rgba(245, 247, 250, 0.9);
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(0, 229, 255, 0.07);
+  border-left: 2px solid var(--cyan);
+}
+
+/* ------------------------------------------------------------------ responsivo */
+
+@media (max-width: 720px) {
+  :root {
+    --gutter: 16px;
+  }
+  .brand-text span {
+    display: none;
+  }
+  .vehicle-card {
+    width: auto;
+    max-width: calc(100vw - 32px);
+    padding: 10px 12px;
+  }
+  .vehicle-card h2 {
+    font-size: 16px;
+    margin: 2px 0 6px;
+  }
+  .dims {
+    display: none;
+  }
+  .tool {
+    min-width: 54px;
+    height: 54px;
+    font-size: 10px;
+  }
+  .help-panel {
+    left: 16px;
+    right: 16px;
+    width: auto;
+  }
+  .hint {
+    font-size: 12px;
+  }
+  /* Aviso abaixo do cartão do veículo (no topo central ele ficaria atrás do cartão). */
+  .toast {
+    top: calc(max(16px, env(safe-area-inset-top)) + 128px);
+    z-index: 5;
+    width: max-content; /* com left: 50%, a largura disponível seria só meia tela */
+    max-width: calc(100vw - 32px);
+  }
+  /* No celular o painel vira uma folha acima da barra. */
+  .callout {
+    padding: 4px 9px 4px 8px;
+    font-size: 11px;
+  }
+  .component-panel {
+    top: auto;
+    left: 12px;
+    right: 12px;
+    bottom: calc(max(18px, env(safe-area-inset-bottom)) + 76px);
+    width: auto;
+    max-height: 46dvh;
+    padding: 12px 16px 14px;
+  }
+  .component-panel h3 {
+    font-size: 18px;
+  }
+  .energy-panel {
+    top: auto;
+    left: 12px;
+    right: 12px;
+    bottom: calc(max(18px, env(safe-area-inset-bottom)) + 76px);
+    width: auto;
+    max-height: 50dvh;
+  }
+  /* Dois painéis no rodapé não cabem: o educativo, quando aberto, fica por cima. */
+  body.cp-open .energy-panel {
+    display: none;
+  }
+  /* Compacto por padrão: abas, mostradores e controles; textos em "Explicação". */
+  .energy-panel .ep-more {
+    display: inline-block;
+  }
+  .energy-panel:not(.is-expanded) :is(.ep-text, .ep-chain, .ep-key, .ep-session, .ep-disclaimer, .ep-sim h4) {
+    display: none;
+  }
+  .energy-panel:not(.is-expanded) h3 {
+    font-size: 13px;
+  }
+  .energy-panel:not(.is-expanded) .ep-sim {
+    padding-top: 6px;
+  }
+  /* Segurando Acelerar/Frear: a gaveta fica só com mostradores e botões e o carro ganha a tela.
+     Ela é ancorada embaixo, então os botões não saem de baixo do dedo. */
+  body.energy-holding .energy-panel :is(header, .sheet-handle, .ep-tabs, h3, .ep-text, .ep-chain, .ep-key, .ep-session, .ep-disclaimer, .ep-sim h4) {
+    display: none;
+  }
+  body.energy-holding .energy-panel .ep-sim {
+    padding-top: 0;
+    border-top: none;
+  }
+  .ep-text {
+    font-size: 12px;
+  }
+  .cp-sections dd {
+    font-size: 13px;
+  }
+}
+
+/* Celular (em pé ou deitado): vistas num menu compacto (botão "Vistas") e barra recolhível ("Recolher"). */
+@media (max-width: 720px), (max-height: 520px) {
+  .tool-views,
+  .tool-retract {
+    display: flex;
+  }
+  .toolbar {
+    overflow: visible;
+  }
+  .toolbar-group {
+    display: none;
+  }
+  .toolbar.views-open .toolbar-group {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 8px);
+    transform: translateX(-50%);
+    display: flex;
+    padding: 6px;
+    border-radius: 16px;
+    background: var(--glass-strong);
+    border: 1px solid var(--line);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    animation: rise 0.2s ease;
+  }
+  .toolbar.views-open .tool-views {
+    color: var(--cyan);
+    background: rgba(0, 229, 255, 0.12);
+  }
+  .toolbar-divider {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  /* Com a energia aberta, o cartão sai do caminho: as legendas usam a faixa superior inteira. */
+  body.energy-open .vehicle-card {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
+  /* Cabeçalho numa linha só em telas de 360 px. */
+  .brand-text strong {
+    font-size: 14px;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+  .hud-top-right {
+    gap: 6px;
+  }
+  .chip {
+    white-space: nowrap;
+    padding: 6px 10px;
+  }
+  .toolbar,
+  .toolbar-group {
+    gap: 2px;
+  }
+  .toolbar {
+    padding: 5px;
+  }
+  .tool {
+    min-width: 44px;
+    height: 52px;
+    padding: 6px 2px;
+    font-size: 9px;
+    letter-spacing: 0;
+  }
+  .tool svg {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+@media (max-height: 520px) {
+  .vehicle-card,
+  .hint {
+    display: none;
+  }
+}
+
+/* Celular deitado: painéis laterais entre o cabeçalho e a barra, energia compacta. */
+@media (min-width: 721px) and (max-height: 520px) {
+  .tool {
+    min-width: 56px;
+    height: 50px;
+    font-size: 10px;
+  }
+  .component-panel,
+  .energy-panel {
+    top: calc(max(10px, env(safe-area-inset-top)) + 52px);
+    max-height: calc(100dvh - 52px - 82px - max(10px, env(safe-area-inset-top)));
+    padding: 10px 14px 12px;
+  }
+  .component-panel {
+    width: min(340px, 42vw);
+  }
+  .energy-panel {
+    width: min(320px, 40vw);
+  }
+  .component-panel h3 {
+    font-size: 18px;
+  }
+  /* O título do modo repete a aba selecionada: some para os controles caberem sem rolar. */
+  .energy-panel:not(.is-expanded) :is(.ep-chain, .ep-key, .ep-sim h4, h3) {
+    display: none;
+  }
+  .ep-tabs {
+    margin: 2px 0 6px;
+  }
+  .ep-tabs button {
+    padding: 5px 4px;
+  }
+  .energy-panel .sheet-handle {
+    height: 10px;
+    margin: -4px 0 0;
+  }
+  .ep-sim {
+    padding-top: 4px;
+  }
+  .ep-stats b {
+    font-size: 18px;
+  }
+  .ep-state {
+    min-height: 0;
+    margin: 4px 0;
+  }
+  .ep-controls-charge {
+    gap: 6px;
+  }
+  .ep-hold,
+  .ep-primary {
+    min-height: 40px;
+  }
+  /* Com a energia aberta, a barra vai para a direita e o painel usa toda a altura à esquerda. */
+  body.energy-open .toolbar {
+    left: auto;
+    right: var(--gutter);
+    transform: none;
+  }
+  body.energy-open .energy-panel {
+    max-height: calc(100dvh - 52px - 22px - max(10px, env(safe-area-inset-top)));
+  }
+  .help-panel {
+    max-height: calc(100dvh - 150px);
+  }
+}
+
+/* ---------------------------------------------------------------- vista interna (dentro do carro) */
+.cabin-enter {
+  position: absolute;
+  left: 50%;
+  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 84px);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px 10px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--cyan);
+  background: rgba(8, 17, 31, 0.86);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 0 22px rgba(0, 229, 255, 0.28);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  animation: rise 0.3s ease;
+}
+.cabin-enter svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: var(--cyan);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.cabin-enter:hover {
+  background: rgba(0, 229, 255, 0.16);
+}
+body.toolbar-hidden .cabin-enter {
+  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 58px);
+}
+.cabin-bar {
+  position: absolute;
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 7px 7px 7px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(8, 17, 31, 0.82);
+  backdrop-filter: blur(12px);
+  white-space: nowrap;
+  animation: rise 0.3s ease;
+}
+.cabin-hint {
+  font-size: 13px;
+  color: var(--muted);
+}
+.cabin-seats {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(0, 184, 255, 0.08);
+}
+.cabin-seats button {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cabin-seats button[aria-pressed="true"] {
+  color: #04121f;
+  background: rgba(0, 229, 255, 0.85);
+}
+.cabin-bar button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.cabin-exit {
+  padding: 10px 18px;
+  border: none;
+  border-radius: 999px;
+  color: #04121f;
+  background: linear-gradient(135deg, var(--blue), var(--cyan));
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+/* Dentro do carro (e durante a entrada/saída), o restante da interface sai de cena. */
+body.in-cabin :is(.toolbar, .toolbar-restore, .vehicle-card, .callouts, .component-panel, .energy-panel, .hint, .help-panel, .tooltip, .cabin-enter) {
+  display: none !important;
+}
+@media (max-width: 720px) {
+  /* A gaveta da peça ocupa o rodapé: o botão espera ela fechar. */
+  body.cp-open .cabin-enter {
+    display: none;
+  }
+  .cabin-hint {
+    font-size: 12px;
+  }
+  /* Com os botões de banco, a dica sai da barra (o aviso na entrada já explica o arraste). */
+  .cabin-bar:has(.cabin-seats:not([hidden])) .cabin-hint {
+    display: none;
+  }
+  .cabin-bar {
+    gap: 8px;
+    padding-left: 7px;
+  }
+  .cabin-seats button,
+  .cabin-exit {
+    padding: 9px 11px;
+    font-size: 12.5px;
+  }
+}
+
+/* ---------------------------------------------------------------- realidade aumentada (celular) */
+/* Sobre a câmera só ficam a barra de RA, os painéis abertos e os avisos — o resto da interface sai. */
+body.in-ar :is(.hud-top, .toolbar, .toolbar-restore, .vehicle-card, .callouts, .hint, .help-panel, .tooltip, .cabin-enter, .cabin-bar) {
+  display: none !important;
+}
+.ar-bar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  padding: 10px;
+  border-radius: 18px;
+  background: rgba(8, 17, 31, 0.78);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(10px);
+}
+.ar-status {
+  margin: 0 4px 8px;
+  font-size: 13px;
+  text-align: center;
+  color: var(--text);
+}
+.ar-actions {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.ar-actions button {
+  min-height: 42px;
+  padding: 6px 4px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: rgba(0, 184, 255, 0.1);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ar-actions button[aria-pressed="true"] {
+  color: #04121f;
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--blue), var(--cyan));
+}
+.ar-actions .ar-exit {
+  border-color: rgba(255, 159, 67, 0.6);
+  background: rgba(255, 159, 67, 0.16);
+}
+/* Painéis acima da barra de RA (--ar-bar-h: altura real da barra, medida pelo hud.js). */
+body.in-ar :is(.component-panel, .energy-panel) {
+  bottom: calc(max(14px, env(safe-area-inset-bottom)) + var(--ar-bar-h, 140px) + 8px) !important;
+  top: auto !important;
+  left: 12px !important;
+  right: 12px !important;
+  width: auto !important;
+  max-height: 46dvh;
+}
+body.in-ar .toast {
+  top: max(16px, env(safe-area-inset-top));
+}
+/* Com um painel aberto, a dica da barra sai (o painel já diz o que fazer) e sobra tela para o carro. */
+body.in-ar:is(.cp-open, .energy-open) .ar-status {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

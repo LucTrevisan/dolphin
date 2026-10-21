@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.local
+.DS_Store
+
+# Modelos 3D originais (pesados) — a versão otimizada fica em public/models/
+modelos-originais/

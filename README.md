@@ -1,0 +1,364 @@
+# EV Experience XR — Laboratório Virtual de Veículos Elétricos
+
+Showroom 3D/VR educacional feito com **Babylon.js 9 + WebXR + Vite**. Funciona no navegador do computador, no celular e no **Meta Quest Browser**.
+Veículo em exposição: **BYD Dolphin** (hatch 100% elétrico da BYD, tração dianteira, bateria Blade), em **prata metálico**.
+
+> **Status:** Etapas 1 a 5 concluídas — showroom, exploração em desktop/VR, **raio X**, painéis educativos,
+> **fluxo de energia** (aceleração, frenagem regenerativa, recarga CA/CC), **simulação**, **vista explodida**,
+> **portas que abrem**, interface retrátil no celular, mãos no Quest, refinamento de desempenho/materiais e
+> publicação no **GitHub Pages**: https://luctrevisan.github.io/eletrico/
+>
+> Escola SENAI Antonio Adolpho Lobbe.
+
+## Instalação e execução
+
+Requer Node.js 20.19+ (testado com Node 24).
+
+```bash
+npm install          # instala dependências
+npm run dev          # servidor local em http://localhost:5173
+npm run build        # build de produção em dist/
+npm run preview      # serve o dist/ em http://localhost:4173
+```
+
+## Testar no Meta Quest
+
+WebXR só funciona em **HTTPS** (ou `localhost`). Duas opções para testar a partir do seu PC:
+
+1. **Rede local com certificado autoassinado**
+   ```bash
+   npm run dev:https
+   ```
+   No Quest Browser, abra `https://IP-DO-PC:5173` (o IP aparece no terminal), aceite o aviso de certificado e toque em **Entrar em VR**.
+2. **Cabo USB (adb)** — com o modo desenvolvedor ativo no Quest:
+   ```bash
+   adb reverse tcp:5173 tcp:5173
+   npm run dev
+   ```
+   No Quest Browser, abra `http://localhost:5173`.
+
+Para usar sem o PC, abra o endereço publicado no GitHub Pages (seção **Publicação**).
+
+### Controles em VR
+| Ação | Controles | Mãos (sem controles) |
+|---|---|---|
+| Teleporte | Thumbstick para frente (mirar), soltar para ir | Apontar para o piso e manter a pinça (~1,5 s) |
+| Giro de 45° (snap turn) | Thumbstick para os lados | — (gire o corpo) |
+| Acionar botões do painel 3D | Gatilho (raio) | Pinça apontando para o botão |
+| Ver informações de uma peça | Gatilho na peça ou na legenda | Pinça na peça ou na legenda |
+| Abrir/fechar uma porta | Gatilho na porta | Pinça na porta |
+| Trazer o painel para perto | Botão **B** ou **Y** | Olhar o pulso esquerdo e tocar em **MENU** |
+
+O painel 3D tem: **RAIO X**, **Energia**, **EXPLODIR**, **Girar plataforma**, **Voltar ao início** e **Sair do VR**.
+Os dois controles (ou as duas mãos) têm raio de seleção ao mesmo tempo — qualquer mão clica já no primeiro
+gatilho. Controles/mãos são detectados sozinhos e as dicas do painel mudam conforme o modo de entrada.
+
+## Raio X e painéis educativos
+
+- **RAIO X** (botão na barra, tecla **X** ou painel 3D em VR): a carroceria fica translúcida; bateria em azul,
+  motor em ciano e inversor em laranja, com legendas e linhas de chamada.
+- **Clique numa peça** (ou numa legenda) para abrir o painel com *Função*, *Como funciona*, *Importância* e
+  uma linha **"No BYD Dolphin"** com os dados do modelo. No desktop a câmera se aproxima do componente;
+  em VR o painel aparece ao lado da linha de visão.
+- O GLB do Dolphin traz carroceria, interior, rodas, freios, portas e a **tomada de recarga** (para-lama dianteiro
+  direito), mas **não** os componentes internos. Bateria, motor, redutor, inversor, BMS, carregador de bordo,
+  refrigeração e cabos de alta tensão são mostrados como **peças ilustrativas detalhadas**, sempre identificadas
+  como "ilustrativo". O trem de força segue a foto do **conjunto “8 em 1” da BYD (e-Platform 3.0)**: um só bloco
+  de alumínio no eixo dianteiro — motor e redutor (com semieixos e coifas) embaixo, caixa da eletrônica em cima com
+  tampa parafusada e etiqueta amarela de alta tensão, carregador de bordo no nível elevado da tampa e cabo laranja
+  descendo até a frente da bateria (`powertrain: "8em1"` no config). As peças continuam separadas: cada uma é
+  selecionável e se afasta na vista explodida. Bateria em bandeja de alumínio com módulos; radiador com reservatório rosa.
+  No raio X elas ganham um leve brilho na cor do código (bateria azul, motor ciano, inversor laranja).
+  Tudo é geometria procedural (sem arquivos extras), com thin instances e cor por vértice: ~10 draw calls a mais só
+  com o raio X ligado.
+- Os textos ficam em `src/vehicle/componentContent.js`; os dados do modelo, em `notes` no `src/config.js`.
+
+## Vista explodida e portas
+
+- **EXPLODIR** (barra, tecla **V** ou painel 3D): carroceria, vidros e portas sobem, o interior se separa, rodas e
+  freios se afastam para os lados e os componentes do trem de força se abrem em leque. Bateria e chassi ficam
+  como referência. Animação suave do Babylon, com legendas que acompanham as peças; **Montar** restaura tudo.
+- **Portas:** clique (mouse, toque, gatilho ou pinça) numa porta para abri-la ou fechá-la — quatro portas e a tampa
+  traseira, cada uma com sua dobradiça. Tecla **P** (ou o botão no painel da peça "Portas") abre/fecha todas.
+
+## Dentro do carro (vista interna e imersão em VR)
+
+- **Computador e celular:** com uma porta aberta, aparece o botão **Entrar no carro**. A câmera entra pela porta do
+  motorista e senta no banco, na altura dos olhos de quem dirige, de frente para o volante, o painel de instrumentos
+  e a central multimídia; a porta fecha. **Arraste** (mouse ou dedo) para olhar em volta — teto, retrovisor,
+  bancos, portas — e use **Sair do carro** (ou **Esc**) para voltar à vista inicial. Enquanto está dentro, a
+  interface some e glow/espelho da plataforma ficam desligados (menos custo de GPU).
+- **Meta Quest:** abra a porta do motorista e aponte para **Entrar no carro** (gatilho ou pinça): você é colocado
+  sentado ao volante — a altura dos olhos é a de quem dirige, esteja você em pé ou sentado numa cadeira — e a porta
+  fecha. Dá para olhar e inclinar a cabeça livremente. **Sair do carro** fica junto à coluna da porta; o painel 3D
+  (B/Y) continua acessível e "Voltar ao início" também tira você do carro. Sentado, a plataforma não gira.
+- O banco é localizado pelo volante do modelo (`evxr.banco()` no console mostra a posição); `evxr.interior()` e
+  `evxr.sentarVR()` entram/saem para testes. Código: `src/scene/cabinView.js` e `src/xr/cabinXR.js` (este só é
+  baixado em dispositivos com VR).
+
+### Banco de trás
+
+Abra uma **porta traseira** (clique, toque, gatilho ou pinça) e use **Entrar no carro**: você senta no banco de trás
+daquele lado, de frente para os encostos dianteiros, com o painel e a central multimídia ao fundo e o teto
+acima. Lá dentro, **Motorista / Banco de trás** troca de lugar passando entre os encostos (no VR, o botão "Banco de
+trás"/"Banco do motorista" fica ao lado de "Sair do carro"). Sai-se pela porta do banco atual.
+
+Os bancos traseiros são medidos na geometria real do interior (raios verticais atrás do motorista acham o assoalho,
+o assento e o encosto traseiros); `evxr.bancos()` mostra as posições e `evxr.interior(true, "rear-left")` /
+`evxr.sentarVR(true, "rear-right")` entram direto num banco.
+
+## Realidade aumentada (RA)
+
+O botão **Entrar em RA** aparece só onde há suporte a `immersive-ar`: **Meta Quest** (passthrough — você vê a sala
+real) e **celulares Android com Chrome** (câmera + ARCore). No iPhone o Safari não oferece WebXR.
+
+1. Ao entrar, o showroom some e fica só o carro (com a sombra de contato). Um **retículo** com a pegada do carro
+   acompanha o chão detectado — no celular, aponte a câmera para o chão e mova devagar; no Quest, olhe para o chão
+   (sem mapeamento da sala, o retículo vai para o piso à sua frente).
+2. **Toque na tela** (celular) ou **gatilho/pinça** (Quest) para posicionar o carro em **tamanho real**, de
+   frente-esquerda para você. Depois é só andar ao redor — e para dentro dele.
+3. Raio X, fluxo de energia, vista explodida, portas e informações das peças funcionam como no VR.
+   **Reposicionar** recomeça o passo 1 e **Maquete 1:4** reduz o carro (≈ 1,2 m) para salas pequenas ou mesas.
+
+- **Celular:** uma barra própria sobre a câmera (WebXR DOM Overlay) com Reposicionar, Maquete, Raio X, Energia,
+  Explodir, Portas e Sair da RA; os painéis de peça e de energia aparecem em HTML acima dela.
+- **Quest:** o mesmo painel 3D do VR, com "Reposicionar carro" e "Sair da RA", e um botão de escala logo abaixo.
+- Em RA não há teleporte (anda-se de verdade) nem o "Entrar no carro" automático: mover o usuário desalinharia o
+  carro do chão real.
+- Código: `src/xr/arMode.js` (2,6 KB, baixado só onde há suporte). Hit-test e DOM Overlay são pedidos só na sessão
+  de RA; a sessão VR continua igual.
+
+## Fluxo de energia e simulação
+
+Botão **Energia** (tecla **E**, ou no painel 3D em VR). O raio X liga sozinho e o caminho da energia aparece
+com partículas: **azul = CC**, **ciano = CA**, **laranja = mecânica**.
+
+- **Aceleração:** segure **Acelerar** (ou **W**): bateria → inversor (CC→CA) → motor → redutor → rodas
+  **dianteiras** (o Dolphin tem um motor só, no eixo dianteiro).
+- **Frenagem regenerativa:** a aba coloca o carro a 80 km/h; segure **Frear** (ou **S**): o fluxo se inverte e a
+  energia recuperada é contabilizada. A regeneração some em baixa velocidade e diminui com a bateria quase cheia.
+- **Recarga:** escolha **CA** (carregador de bordo) ou **CC** (recarga rápida) e toque em **Iniciar recarga**.
+  Um carregador externo aparece ao lado da **tomada de recarga (para-lama dianteiro direito)** — a tomada real do
+  modelo 3D, onde o cabo se conecta —, e a câmera enquadra carro e carregador juntos. Tempo acelerado: 1 s = 1 min.
+
+O painel mostra velocidade, estado de carga (SOC), potência da bateria e o estado do sistema. As rodas giram
+conforme a velocidade (o carro fica na plataforma, como num dinamômetro). **Todos os valores são demonstrativos**,
+inspirados no Dolphin de 44,9 kWh e 70 kW (`SIMULATION` em `src/config.js`); os textos ficam em `src/simulation/energyContent.js`.
+
+## Celular: interface retrátil
+
+Pensada para deixar o carro visível na tela pequena:
+
+- **Cartão do veículo** recolhido por padrão (toque para ver medidas e créditos).
+- **Vistas** (Inicial, Frente, Lateral, Traseira, Superior) agrupadas num menu suspenso da barra.
+- **Recolher** esconde a barra inteira; o botão **Menu** a traz de volta.
+- Painéis de peça e de energia são **gavetas**: toque na alça (ou arraste para baixo) para recolher; a explicação
+  longa da energia fica atrás do botão **Explicação**.
+- **Olho** (canto superior, tecla **I**): esconde toda a interface para ver só o modelo 3D.
+- Com um painel aberto, o carro se desloca para o centro da área livre e só a legenda da peça escolhida fica na tela.
+- **Legendas sob demanda:** no raio X e na vista explodida, nenhuma legenda cobre o carro — toque numa peça para
+  ver o nome dela (na vista explodida, a gaveta abre recolhida, só com o nome; a alça mostra os detalhes). Tocar
+  fora das peças fecha.
+- **Fluxo de energia:** o carro é enquadrado para ocupar a área acima da gaveta; enquanto **Acelerar** ou **Frear**
+  está pressionado, a gaveta fica só com os mostradores e os botões e as legendas somem, deixando o carro, o fluxo e
+  as rodas à vista. No desktop nada muda.
+
+## Desempenho
+
+| | Original | Etapa 4 | Etapa 5 |
+|---|---|---|---|
+| Modelo 3D (`2021_byd_dolphin_ev.glb`) | 33,0 MB · 434 mil triângulos | — | **6,9 MB · 251 mil** (texturas WebP, máx. 1024 px) |
+| JavaScript na abertura | 8,0 MB (1,74 MB gzip) | 2,2 MB (580 KB gzip) | **1,8 MB (502 KB gzip)** — WebXR sob demanda |
+| Draw calls por quadro (perfil do Quest, por olho) | — | 111 | **86** |
+| Triângulos do showroom | — | 76 mil | **9,4 mil** |
+| Memória de texturas na GPU | — | 84 MB | **48 MB** |
+
+- Importações do Babylon por módulo (sem o pacote inteiro); carregadores de glTF e extensões sob demanda.
+- WebXR (teleporte, controles, mãos) e a interface 3D de VR (Babylon GUI) só são baixados em dispositivos com VR.
+- Carroceria, vidros, interior e chassi unidos por material entre conjuntos (`mergeAcross` no config): 127 → 105
+  malhas no Dolphin sem afetar raio X, vista explodida e portas.
+- Anéis de LED e halo como tubos leves (~2 mil triângulos cada, contra ~19 mil de um toro equivalente).
+- Materiais compartilhados no fluxo de energia; partículas por *thin instances*.
+- Legendas da vista explodida só são recalculadas enquanto as peças se movem.
+- Mãos em VR com esferas instanciadas (um draw call) e esfera de toque com material simples: nada é baixado da
+  CDN do Babylon para as mãos (e some um erro de NodeMaterial que a versão padrão causava).
+- Verniz (clear coat) na pintura e rodas metálicas só fora do perfil leve; no Quest ficam os materiais originais.
+- Espelho da plataforma e glow só existem no desktop; são desligados automaticamente em VR. Perfil de qualidade
+  ajustado sozinho se o FPS cair.
+
+### Otimizar um GLB novo
+
+```bash
+npm run otimizar-modelo -- modelos-originais/carro.glb public/models/carro.glb
+npm run preparar-dolphin -- modelos-originais/2021_byd_dolphin_ev.glb modelos-originais/2021_byd_dolphin_ev.preparado.glb
+npm run otimizar-modelo -- modelos-originais/2021_byd_dolphin_ev.preparado.glb public/models/2021_byd_dolphin_ev.glb --simplificar=0.5 --webp
+```
+
+Aplica deduplicação, solda de vértices, compressão **meshopt**, limita as texturas a 1024 px (`--textura=N`;
+imagens quase lisas ficam com 512 px) e, opcionalmente, simplificação com limite de erro (`--simplificar`,
+`--erro`) e texturas em WebP (`--webp`). Os dois últimos comandos geram exatamente o modelo publicado.
+
+**Por que o Dolphin passa por `preparar-dolphin`:** o GLB do Sketchfab agrupa a geometria por *material* (toda a
+pintura numa malha, todo o plástico em outra, nomes em código), e o app reconhece as peças pelos nomes. O script
+(`scripts/preparar-dolphin.mjs`) separa cada malha em componentes conexos e os distribui, pelo material e pela
+posição, em conjuntos nomeados: `carroceria` (com `headlight_*`, `taillight_*` e a `tomada_recarga`), as quatro
+portas, `porta_malas`, as quatro rodas (pneu, aro e freio), `interior` (com o `volante`, que posiciona o banco do
+motorista), `vidros` e `chassi`. A porta traseira e a tampa traseira vêm fundidas à carroceria no original e são
+recortadas triângulo a triângulo. Também aplica as transformações e deixa o carro em metros, com o entre-eixos real
+(2,70 m). Rode com `--debug` para listar o que caiu em cada peça.
+O decodificador meshopt é servido localmente (`public/vendor/meshopt_decoder.js`). Guarde os originais em
+`modelos-originais/` (pasta ignorada pelo git).
+
+## Publicação (GitHub Pages)
+
+O repositório já tem o workflow `.github/workflows/deploy.yml`: a cada `git push` na branch `main`, o GitHub
+Actions roda `npm ci` + `npm run build` e publica a pasta `dist/` em **https://luctrevisan.github.io/eletrico/**.
+
+1. No GitHub: **Settings → Pages → Build and deployment → Source: GitHub Actions** (uma vez só).
+2. Publicar uma alteração:
+   ```bash
+   git add -A
+   git commit -m "Descrição da alteração"
+   git push
+   ```
+3. Acompanhe em **Actions**; em ~1–2 min o site é atualizado (no Quest, recarregue a página).
+
+O `vite.config.js` usa `base: "./"` (caminhos relativos), necessário porque o site fica em `/eletrico/`, e não na
+raiz do domínio. O build de produção também pode ser testado localmente: `npm run build && npm run preview`.
+
+**Checklist antes de uma demonstração no Quest:** abrir o endereço publicado no Quest Browser → aguardar o
+carregamento → **Entrar em VR** → testar gatilho no painel 3D, teleporte (thumbstick para frente), giro de 45°,
+botão B/Y e, sem controles, a pinça e o menu de pulso.
+
+## Identificação da escola
+
+O totem do showroom, a placa em VR e a tela de carregamento usam `INSTITUTION` em `src/config.js`.
+O logotipo é desenhado pelo app; para usar a **arte oficial**, salve-a em `public/textures/` (ex.:
+`senai-logo.png`, fundo opaco, proporção ~4:1) e informe o caminho em `INSTITUTION.logoUrl`.
+
+## Trocar ou ajustar o veículo
+
+Tudo que depende do modelo fica em `VEHICLE_MODELS` (`src/config.js`): arquivo, nome, selo, crédito do autor,
+orientação, tração (`drivetrain`: `"front"`, `"rear"` ou `"awd"`), formato do trem de força ilustrativo
+(`powertrain: "8em1"` para o bloco único da BYD; sem ele, peças separadas), posição da porta de recarga e padrões
+extras de nomes de peças, além de ajustes finos de material (`materials`: cor, verniz, metálico, rugosidade).
+
+**Cor da pintura:** em `materials.D_Paint_Color.color` (hex). O Dolphin está em prata metálico (`#c4c8cd`, metálico
+0,8, rugosidade 0,3, com verniz); o arquivo original vem em azul. A mesma cor pinta os insertos das rodas.
+
+1. Otimize o GLB (seção acima) e salve em `public/models/`.
+2. A frente é detectada sozinha pelos faróis/lanternas (`autoFront`). Se ainda aparecer virado, ajuste ao vivo
+   no console (F12) e grave em `rotationDeg`:
+   ```js
+   evxr.girarModelo(0, 90, 0)
+   ```
+3. Confira quais componentes foram reconhecidos pelos nomes das peças:
+   ```js
+   evxr.componentes()
+   ```
+   Ajuste `extraPatterns` no config (ou os padrões em `src/vehicle/components.js`).
+
+A escala é verificada automaticamente: se o comprimento medido estiver fora de 3–6,5 m (ex.: modelo exportado em
+milímetros), o carro é reescalado para o comprimento de referência definido em `src/config.js`.
+
+**Crédito do modelo 3D:** “2021 BYD Dolphin EV” por Ddiaz Design
+(https://sketchfab.com/3d-models/2021-byd-dolphin-ev-26f256d635b94104adf9dcd6b414d097), licença
+**CC BY-NC-SA 4.0** — exibido no cartão do veículo. A licença permite uso não comercial (como o educativo) com
+crédito, e versões modificadas — o GLB preparado e otimizado em `public/models/` — seguem a mesma licença.
+
+## Parâmetros de URL e console (depuração)
+
+| Parâmetro | Efeito |
+|---|---|
+| `?q=low` / `medium` / `high` | Força o perfil de qualidade |
+| `?nointro` | Pula a animação de abertura |
+| `?debug` | Mostra FPS, draw calls e perfil de qualidade |
+| `?model=models/x.glb&rot=0,90,0` | Carrega outro GLB com rotação (graus) |
+| `?ilustrativo` | Esconde os componentes internos reais para testar as formas ilustrativas |
+
+No console: `evxr.info()`, `evxr.componentes()`, `evxr.raioX(true)`, `evxr.selecionar("bateria")`
+(`evxr.selecionar(null)` limpa), `evxr.explodir(true)`, `evxr.portas()`, `evxr.energia(true, "regen")`,
+`evxr.simulacao()`, `evxr.girarModelo(x, y, z)`, `evxr.qualidade("low")`, `evxr.previewVR()` (simula no desktop a
+vista de chegada em VR; `evxr.previewVR(false)` volta).
+
+### Atalhos de teclado (desktop)
+
+| Tecla | Ação |
+|---|---|
+| **X** | Raio X |
+| **E** | Fluxo de energia (**W** acelera, **S** freia) |
+| **V** | Explodir / montar |
+| **P** | Abrir / fechar todas as portas |
+| **I** | Esconder / mostrar a interface |
+| **Espaço** | Girar / parar a plataforma |
+| **0** a **4** | Vistas: inicial, frente, lateral, traseira, superior |
+| **H** | Ajuda |
+| **Esc** | Fechar o painel aberto |
+
+## Estrutura
+
+```
+src/
+├── main.js                 orquestração (cena → veículo → showroom → VR), cada etapa com tratamento de erro próprio
+├── babylon.js              importações do Babylon por módulo (tree-shaking) e registro dos carregadores
+├── config.js               modelo, paleta, medidas, VR e simulação — tudo que muda ao trocar o GLB
+├── scene/
+│   ├── createScene.js      motor, cena, câmera orbital, vistas predefinidas e enquadramentos
+│   ├── cabinView.js        vista interna: entrar no carro pela porta do motorista (desktop/celular)
+│   ├── environment.js      showroom: piso, plataforma giratória, LEDs, halo, título, placa e totem da escola
+│   ├── lighting.js         ambiente de estúdio + luzes direcionais + sombras
+│   ├── presentation.js     tween e animação de abertura
+│   └── quality.js          perfis de qualidade e redução automática se o FPS cair
+├── vehicle/
+│   ├── loadVehicle.js      carregamento do GLB, orientação (inclusive automática), escala e centralização
+│   ├── components.js       catálogo de componentes, agrupamento, fusão de malhas e posições
+│   ├── componentContent.js textos educativos (função, como funciona, importância)
+│   ├── materialStates.js   opacidade e brilho por peça (base do raio X e da seleção)
+│   ├── xrayMode.js         raio X com transição suave
+│   ├── selection.js        seleção por clique/toque/gatilho/pinça, hover e destaque pulsante
+│   ├── schematics.js       formas ilustrativas (e-Axle por eixo conforme a tração; bloco "8 em 1" da BYD)
+│   ├── explodedView.js     vista explodida com animações do Babylon
+│   └── doors.js            dobradiças e animação das portas e da tampa traseira
+├── simulation/
+│   ├── vehicleSimulation.js modelo da simulação (sem Babylon; valores demonstrativos)
+│   ├── energyFlow.js       rotas e partículas do fluxo (1 ou 2 e-Axles), carregador externo e giro das rodas
+│   └── energyContent.js    textos dos modos A, B e C
+├── xr/
+│   ├── support.js          detecção de suporte a VR (sem Babylon: entra no pacote inicial)
+│   ├── cabinXR.js          VR: sentar no banco do motorista e sair do carro (sob demanda)
+│   ├── arMode.js           realidade aumentada: posicionar o carro no ambiente real (sob demanda)
+│   ├── xrExperience.js     WebXR (sob demanda): entrada em VR, teleporte, snap turn, mãos, ponto de partida
+│   └── interactions.js     botões B/Y e menu de pulso (mãos) para chamar o painel
+├── ui/
+│   ├── hud.js              HUD em HTML (desktop/celular) e interface retrátil
+│   ├── vrMenu.js           painel de controle 3D dentro do headset (carregado só em VR)
+│   ├── componentPanel.js   painel educativo (HTML; versão holográfica em componentPanelVR.js)
+│   ├── energyPanel.js      painel de energia e simulação (HTML; versão holográfica em energyPanelVR.js)
+│   ├── componentCallouts.js legendas em tela (desktop/celular)
+│   ├── componentLabels.js  legendas em 3D (VR) e legendas móveis da vista explodida
+│   └── gui.js              importações do Babylon GUI
+└── styles/main.css
+public/
+├── models/2021_byd_dolphin_ev.glb  modelo preparado e otimizado (6,9 MB)
+├── textures/studio.env     mapa de ambiente (reflexos PBR), servido localmente
+├── vendor/meshopt_decoder.js decodificador da compressão meshopt
+└── audio/
+scripts/otimizar-modelo.mjs  otimização de GLB (npm run otimizar-modelo)
+scripts/preparar-dolphin.mjs separa o GLB do Dolphin em peças nomeadas (npm run preparar-dolphin)
+modelos-originais/           GLBs originais, fora do git
+```
+
+## Notas técnicas
+
+- Malhas com o mesmo material dentro de cada conjunto são unidas na carga; portas ficam separadas para abrir.
+- O HUD em HTML não aparece dentro do headset — em VR os mesmos comandos estão no painel 3D.
+- Os modelos 3D dos **controles** em VR vêm da CDN do Babylon.js; sem internet, a VR continua funcionando com o
+  raio de seleção. As mãos não dependem de internet.
+- Os dados do BYD Dolphin (bateria Blade LFP de 44,9 kWh, motor dianteiro de 70 kW/180 N·m, CA 6,6–7 kW, CC até
+  ~60 kW; 4,125 × 1,77 × 1,57 m na versão chinesa de 2021, 4,29 m na global/brasileira, entre-eixos 2,70 m) variam
+  por versão e ano e são usados apenas como referência didática.
+
+#   e l e t r i c o  
+ #   e l e t r i c o  
+ #   d o l p h i n  
+ 
