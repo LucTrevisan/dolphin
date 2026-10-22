@@ -5,7 +5,7 @@ import basicSsl from "@vitejs/plugin-basic-ssl";
 // (o site fica em usuario.github.io/repositorio/, não na raiz do domínio).
 // `--mode https` liga um certificado autoassinado para testar WebXR no Meta Quest pela rede local.
 export default defineConfig(({ mode }) => ({
-  base: "'/dolphin/",
+  base: "/dolphin/",
   plugins: mode === "https" ? [basicSsl()] : [],
   server: { host: true, port: 5173 },
   preview: { host: true, port: 4173 },
