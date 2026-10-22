@@ -264,45 +264,101 @@ function classify(c) {
   return inCabin(c.center) ? "interior/interior" : "carroceria/carroceria";
 }
 
-/** Peça de um triângulo dos componentes fundidos (contorno lateral e traseira). */
-function classifyTriangle(c, i) {
+/**
+ * Recorte dos componentes fundidos: contorno lateral → porta traseira (abaixo da linha de cintura,
+ * atrás da fresta da coluna B) e traseira → tampa (entre as colunas, acima da linha do para-choque).
+ * Os triângulos da borda são CORTADOS nos planos do recorte, com posição, normal e UV interpolados:
+ * a borda sai reta, sem o serrilhado de mandar triângulos inteiros para um lado ou outro.
+ * Devolve [[peça, triângulo], …]; cada vértice é um índice original ou { mix: [[índice, peso], …] }.
+ */
+function cutTriangle(c, i) {
   const { P, tris } = c.source;
-  const v = [0, 1, 2].map((k) => [P[tris[i + k] * 3], P[tris[i + k] * 3 + 1], P[tris[i + k] * 3 + 2]]);
-  if (isSideRing(c)) {
-    // Porta traseira: abaixo da linha de cintura e atrás da fresta da coluna B. Os triângulos que
-    // atravessam a fresta (fechamento do vão até a coluna) vão com a porta: com ela fechada, o vão
-    // continua fechado como no original.
-    const behind = v.filter((p) => p[2] < B_PILLAR_Z && p[1] < REAR_DOOR_TOP && p[1] > 0.24).length;
-    const spansGap = behind > 0 && v.every((p) => p[1] < REAR_DOOR_TOP && p[1] > 0.24);
-    return behind === 3 || spansGap ? `porta_traseira_${sideName(c.center[0])}/porta` : "carroceria/carroceria";
+  const ring = isSideRing(c);
+  const opening = ring ? `porta_traseira_${sideName(c.center[0])}/porta` : "porta_malas/tampa";
+  // Planos do recorte: f(p) ≥ 0 do lado da peça que abre.
+  const planes = ring
+    ? [(p) => B_PILLAR_Z - p[2], (p) => REAR_DOOR_TOP - p[1], (p) => p[1] - 0.24]
+    : [(p) => TAILGATE.halfWidth - p[0], (p) => p[0] + TAILGATE.halfWidth, (p) => p[1] - TAILGATE.bottom, (p) => TAILGATE.front - p[2]];
+  const ids = [tris[i], tris[i + 1], tris[i + 2]];
+  const pos = ids.map((v) => [P[v * 3], P[v * 3 + 1], P[v * 3 + 2]]);
+  if (planes.every((f) => pos.every((p) => f(p) >= 0))) return [[opening, ids]];
+  if (planes.some((f) => pos.every((p) => f(p) <= 0))) return [["carroceria/carroceria", ids]];
+
+  let poly = ids.map((v, k) => ({ pos: pos[k], mix: [[v, 1]] }));
+  const pieces = [];
+  for (const f of planes) {
+    const [inPart, outPart] = splitPolygon(poly, f);
+    if (outPart) pieces.push(["carroceria/carroceria", outPart]);
+    poly = inPart;
+    if (!poly) break;
   }
-  // Traseira: a tampa fica entre as colunas, acima da linha do para-choque (na borda, vence a maioria).
-  const onGate = (p) => Math.abs(p[0]) < TAILGATE.halfWidth && p[1] > TAILGATE.bottom && p[2] < TAILGATE.front;
-  return v.filter(onGate).length >= 2 ? "porta_malas/tampa" : "carroceria/carroceria";
+  if (poly) pieces.push([opening, poly]);
+  const ref = (p) => (p.mix.length === 1 && p.mix[0][1] === 1 ? p.mix[0][0] : { mix: p.mix });
+  // Polígono convexo → leque de triângulos (a ordem dos vértices preserva a face).
+  return pieces.flatMap(([part, pg]) => pg.slice(1, -1).map((_, k) => [part, [ref(pg[0]), ref(pg[k + 1]), ref(pg[k + 2])]]));
+}
+
+/** Sutherland–Hodgman: divide um polígono pelo plano f(p) = 0 em [parte com f ≥ 0, parte com f ≤ 0]. */
+function splitPolygon(poly, f) {
+  const inside = [];
+  const outside = [];
+  const vals = poly.map((p) => f(p.pos));
+  for (let k = 0; k < poly.length; k++) {
+    const a = poly[k];
+    const b = poly[(k + 1) % poly.length];
+    const fa = vals[k];
+    const fb = vals[(k + 1) % poly.length];
+    if (fa >= 0) inside.push(a);
+    if (fa <= 0) outside.push(a);
+    if ((fa > 0 && fb < 0) || (fa < 0 && fb > 0)) {
+      const t = fa / (fa - fb);
+      const mix = new Map();
+      for (const [v, w] of a.mix) mix.set(v, (mix.get(v) ?? 0) + w * (1 - t));
+      for (const [v, w] of b.mix) mix.set(v, (mix.get(v) ?? 0) + w * t);
+      const p = { pos: a.pos.map((x, j) => x + (b.pos[j] - x) * t), mix: [...mix] };
+      inside.push(p);
+      outside.push(p);
+    }
+  }
+  return [inside.length >= 3 ? inside : null, outside.length >= 3 ? outside : null];
 }
 
 // ----------------------------------------------------------------------------- montagem do novo GLB
 
-/** part → material → { source → triângulos } */
+/**
+ * Os insertos das rodas usam a tinta da carroceria no original. Um material próprio (D_Paint_Roda,
+ * grafite como nas rodas do Dolphin) deixa trocar a cor do carro sem pintar as rodas; a cor final
+ * pode ser ajustada no config (materials.D_Paint_Roda).
+ */
+const wheelPaint = new Map();
+const materialFor = (part, mat) => {
+  if (!part.startsWith("roda_") || mat?.getName() !== "D_Paint_Color") return mat;
+  if (!wheelPaint.has(mat)) {
+    wheelPaint.set(mat, mat.clone().setName("D_Paint_Roda").setBaseColorFactor([0.04, 0.045, 0.052, 1]).setRoughnessFactor(0.35));
+  }
+  return wheelPaint.get(mat);
+};
+
+/** part → material → { source → triângulos ([ref, ref, ref], ref = índice ou { mix }) } */
 const buckets = new Map();
-const add = (part, c, i) => {
-  if (!part) return;
+const add = (part, c, tri) => {
   if (!buckets.has(part)) buckets.set(part, new Map());
   const byMat = buckets.get(part);
-  const mat = c.source.prim.getMaterial();
+  const mat = materialFor(part, c.source.prim.getMaterial());
   if (!byMat.has(mat)) byMat.set(mat, new Map());
   const bySource = byMat.get(mat);
   if (!bySource.has(c.source)) bySource.set(c.source, []);
-  bySource.get(c.source).push(i);
+  bySource.get(c.source).push(tri);
 };
 const report = new Map();
 for (const c of comps) {
+  const { tris } = c.source;
   if (isSideRing(c) || isRearBody(c)) {
-    for (const i of c.tris) add(classifyTriangle(c, i), c, i);
+    for (const i of c.tris) for (const [part, tri] of cutTriangle(c, i)) add(part, c, tri);
     continue;
   }
   const part = classify(c);
-  for (const i of c.tris) add(part, c, i);
+  for (const i of c.tris) add(part, c, [tris[i], tris[i + 1], tris[i + 2]]);
   if (debug) {
     if (!report.has(part)) report.set(part, []);
     report.get(part).push(c);
@@ -362,17 +418,22 @@ function buildPrimitive(material, bySource) {
   const data = Object.fromEntries(semantics.map((sem) => [sem, []]));
   const indices = [];
   let base = 0;
-  for (const [s, triStarts] of bySource) {
+  for (const [s, triangles] of bySource) {
+    // Vértices originais são compartilhados; os criados no recorte ({ mix }) entram um a um.
     const remap = new Map();
     const order = [];
-    for (const i of triStarts) {
-      for (let k = 0; k < 3; k++) {
-        const v = s.tris[i + k];
-        if (!remap.has(v)) {
-          remap.set(v, base + order.length);
-          order.push(v);
+    for (const tri of triangles) {
+      for (const ref of tri) {
+        if (typeof ref !== "number") {
+          indices.push(base + order.length);
+          order.push(ref.mix);
+          continue;
         }
-        indices.push(remap.get(v));
+        if (!remap.has(ref)) {
+          remap.set(ref, base + order.length);
+          order.push([[ref, 1]]);
+        }
+        indices.push(remap.get(ref));
       }
     }
     const m = s.matrix;
@@ -381,20 +442,31 @@ function buildPrimitive(material, bySource) {
       const acc = s.prim.getAttribute(sem);
       const size = acc.getElementSize();
       const arr = acc.getArray();
-      for (const v of order) {
+      const integer = !(arr instanceof Float32Array);
+      // Média ponderada do atributo nos vértices de origem (um só vértice com peso 1 = cópia).
+      const blend = (mix) => {
+        const out = new Array(size).fill(0);
+        for (const [v, w] of mix) for (let k = 0; k < size; k++) out[k] += arr[v * size + k] * w;
+        return out;
+      };
+      for (const mix of order) {
         if (sem === "POSITION") {
-          data[sem].push(s.P[v * 3] * finalScale, s.P[v * 3 + 1] * finalScale, s.P[v * 3 + 2] * finalScale);
+          const p = [0, 0, 0];
+          for (const [v, w] of mix) for (let k = 0; k < 3; k++) p[k] += s.P[v * 3 + k] * w;
+          data[sem].push(...p.map((x) => x * finalScale));
         } else if (sem === "NORMAL" || sem === "TANGENT") {
-          const e = acc.getElement(v, new Array(size).fill(0));
+          const e = mix.length === 1 ? acc.getElement(mix[0][0], new Array(size).fill(0)) : blend(mix);
           const d = normalize(transformDir(m, e));
-          data[sem].push(...d, ...(size === 4 ? [flip ? -e[3] : e[3]] : []));
+          const w = size === 4 ? Math.sign(acc.getElement(mix[0][0], [0, 0, 0, 0])[3]) || 1 : null;
+          data[sem].push(...d, ...(size === 4 ? [flip ? -w : w] : []));
         } else {
-          for (let k = 0; k < size; k++) data[sem].push(arr[v * size + k]);
+          const e = blend(mix);
+          data[sem].push(...(integer ? e.map(Math.round) : e));
         }
       }
     }
     base += order.length;
-    if (flip) for (let i = indices.length - triStarts.length * 3; i < indices.length; i += 3) [indices[i + 1], indices[i + 2]] = [indices[i + 2], indices[i + 1]];
+    if (flip) for (let i = indices.length - triangles.length * 3; i < indices.length; i += 3) [indices[i + 1], indices[i + 2]] = [indices[i + 2], indices[i + 1]];
   }
   const buffer = root.listBuffers()[0];
   for (const sem of semantics) {

@@ -22,12 +22,14 @@ import { getContent } from "./componentContent.js";
  * (foto do trem de força do Dolphin) — motor e redutor embaixo, caixa da eletrônica (inversor) em
  * cima com tampa parafusada e etiqueta de alta tensão, carregador de bordo atrás e cabo laranja
  * até a bateria. Continuam peças separadas: cada uma é selecionável e se afasta na vista explodida.
+ * battery "blade": bateria Blade da BYD (sem módulos, cell-to-pack) — lâminas longas que atravessam
+ * o pacote, lado a lado, numa bandeja escura com barramentos nas pontas.
  *
  * Coordenadas no referencial do prato giratório: frente em +Z, lado esquerdo em −X, piso em y = 0.
  * Cada peça é um nó (TransformNode) no centro dela, com as malhas como filhas — é o nó que a vista
  * explodida desloca (`meshes` devolve esses nós).
  */
-export function createSchematics(scene, { parent, dims, axles, missing, drivetrain = "front", powertrain = null, states }) {
+export function createSchematics(scene, { parent, dims, axles, missing, drivetrain = "front", powertrain = null, battery = null, states }) {
   const items = {};
   const roots = [];
   const all = [];
@@ -103,7 +105,7 @@ export function createSchematics(scene, { parent, dims, axles, missing, drivetra
   const g = geometry(scene);
   g.paint = paint;
   const builders = {
-    bateria: buildBattery,
+    bateria: battery === "blade" ? buildBatteryBlade : buildBattery,
     motor: integrated ? buildMotor8in1 : buildMotor,
     redutor: (P, size) => (integrated ? buildReducer8in1 : buildReducer)(P, size, wheelX),
     inversor: integrated ? buildController8in1 : buildInverter,
@@ -187,6 +189,7 @@ function createMaterials(scene) {
   return {
     alu: pbr("aluminio-fundido", "#aeb3ba", 0.85, 0.42), // carcaças de motor/redutor, bandeja da bateria
     aluBright: pbr("aluminio-claro", "#d4d8dd", 0.7, 0.3), // caixas do inversor e do carregador (foto do cofre)
+    packDark: pbr("pacote-escuro", "#2c3137", 0.55, 0.42), // bandeja da bateria Blade (preta, como na foto da BYD)
     orange: pbr("alta-tensao", "#ff6a14", 0, 0.5), // cabos e conectores de alta tensão
     pink: pbr("reservatorio", "#ff96bf", 0, 0.28), // reservatório do líquido de arrefecimento
     // Cor por vértice (albedo branco): várias cores na mesma malha, um draw call só.
@@ -209,6 +212,9 @@ const COLORS = {
   steel: "#565b63",
   rubber: "#1d2126",
   black: "#22262b",
+  blade: "#aebccb", // invólucro de alumínio das lâminas Blade
+  bladeTop: "#5a86b8", // filme isolante azul no topo
+  copper: "#c7793c",
 };
 function paint(mesh, hex) {
   const c = Color3.FromHexString(hex).toLinearSpace();
@@ -328,6 +334,66 @@ function buildBattery(P, [Wb, Hb, Lb]) {
   instanced(P, unit, modules, "modulos", mats.paintedModule);
 
   // Conector de alta tensão na frente da bateria (de onde saem os cabos laranja).
+  merged(
+    P,
+    [g.box(0.2, 0.05, 0.05, Wb * 0.12, bottom + railH * 0.7, Lb / 2 + 0.024), g.box(0.035, 0.035, 0.08, Wb * 0.12 - 0.05, bottom + railH * 0.7, Lb / 2 + 0.07), g.box(0.035, 0.035, 0.08, Wb * 0.12 + 0.05, bottom + railH * 0.7, Lb / 2 + 0.07)],
+    "conector-hv",
+    mats.orange,
+  );
+}
+
+/**
+ * Bateria Blade (BYD): sem módulos — as células são lâminas longas que atravessam a largura do
+ * pacote, lado a lado ao longo do carro (cell-to-pack), com terminais nas duas pontas ligados por
+ * barramentos. Bandeja escura parafusada, como o pacote preto da foto do trem de força do Dolphin.
+ */
+function buildBatteryBlade(P, [Wb, Hb, Lb]) {
+  const { g, mats } = P;
+  const bottom = -Hb / 2;
+  const t = 0.025; // fundo da bandeja
+  const rail = 0.05; // moldura
+  const railH = Hb * 0.8;
+  const Wi = Wb - 2 * rail - 0.02;
+  const Li = Lb - 2 * rail - 0.02;
+  const pitch = 0.04; // espessura da lâmina + folga
+  const n = Math.max(12, Math.floor(Li / pitch));
+  const bladeH = Hb - t - 0.02;
+  const bladeL = Wi - 0.08; // sobra espaço nas pontas para os barramentos
+
+  const tray = [
+    g.box(Wb, t, Lb, 0, bottom + t / 2, 0),
+    g.box(Wb, railH, rail, 0, bottom + railH / 2, Lb / 2 - rail / 2),
+    g.box(Wb, railH, rail, 0, bottom + railH / 2, -Lb / 2 + rail / 2),
+    g.box(rail, railH, Lb, Wb / 2 - rail / 2, bottom + railH / 2, 0),
+    g.box(rail, railH, Lb, -Wb / 2 + rail / 2, bottom + railH / 2, 0),
+  ];
+  const yb = bottom + railH + 0.004;
+  for (let x = -Wb / 2 + 0.06; x <= Wb / 2 - 0.06; x += 0.11) for (const s of [-1, 1]) tray.push(g.cylY(0.02, 0.008, x, yb, s * (Lb / 2 - rail / 2), 6));
+  for (let z = -Lb / 2 + 0.12; z <= Lb / 2 - 0.12; z += 0.11) for (const s of [-1, 1]) tray.push(g.cylY(0.02, 0.008, s * (Wb / 2 - rail / 2), yb, z, 6));
+  merged(P, tray, "bandeja", mats.packDark);
+
+  // Lâmina (invólucro + faixa superior + terminais de cobre nas pontas), repetida por thin instances.
+  const blade = Mesh.MergeMeshes(
+    [
+      g.paint(g.box(bladeL, bladeH, pitch - 0.008), COLORS.blade),
+      g.paint(g.box(bladeL - 0.04, 0.006, pitch - 0.012, 0, bladeH / 2 + 0.003, 0), COLORS.bladeTop),
+      g.paint(g.box(0.035, 0.02, pitch * 0.5, -bladeL / 2 - 0.012, bladeH / 2 - 0.012, 0), COLORS.copper),
+      g.paint(g.box(0.035, 0.02, pitch * 0.5, bladeL / 2 + 0.012, bladeH / 2 - 0.012, 0), COLORS.copper),
+    ],
+    true,
+    true,
+  );
+  const y = bottom + t + bladeH / 2;
+  const blades = Array.from({ length: n }, (_, i) => new Vector3(0, y, -Li / 2 + pitch * (i + 0.5)));
+  instanced(P, blade, blades, "laminas", mats.paintedModule);
+
+  // Barramentos ao longo das duas pontas e conector de alta tensão na frente (cabos laranja).
+  merged(
+    P,
+    [-1, 1].map((s) => g.box(0.03, 0.008, n * pitch, s * (bladeL / 2 + 0.012), bottom + t + bladeH + 0.002, -Li / 2 + (n * pitch) / 2)),
+    "barramentos",
+    mats.orange,
+  );
   merged(
     P,
     [g.box(0.2, 0.05, 0.05, Wb * 0.12, bottom + railH * 0.7, Lb / 2 + 0.024), g.box(0.035, 0.035, 0.08, Wb * 0.12 - 0.05, bottom + railH * 0.7, Lb / 2 + 0.07), g.box(0.035, 0.035, 0.08, Wb * 0.12 + 0.05, bottom + railH * 0.7, Lb / 2 + 0.07)],

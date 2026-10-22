@@ -42,6 +42,7 @@ export const PALETTE = {
  *               ilustrativas quando o GLB não traz os componentes internos.
  *  powertrain   "8em1": motor, redutor, inversor e carregador de bordo ilustrativos montados como
  *               um só bloco (conjunto “8 em 1” da BYD e-Platform 3.0). Sem ele: peças separadas.
+ *  battery      "blade": bateria ilustrativa com lâminas (BYD Blade). Sem ele: módulos.
  *  chargePort   onde fica a porta de recarga: { side: "left"|"right", end: "front"|"rear" } — usado
  *               quando o GLB não traz a tomada modelada (peça com "tomada"/"porta_recarga" no nome).
  *  extraPatterns regras extras de identificação de peças só para este arquivo.
@@ -61,17 +62,43 @@ export const VEHICLE_MODELS = [
     // Hatch da e-Platform 3.0: um só conjunto elétrico (motor + redutor + inversor) no eixo dianteiro.
     drivetrain: "front",
     powertrain: "8em1", // como na foto do trem de força do Dolphin (site da BYD)
+    battery: "blade", // bateria Blade: lâminas no pacote, sem módulos
     chargePort: { side: "right", end: "front" }, // para-lama dianteiro direito (a tomada está modelada no GLB)
     extraPatterns: {
       // A tomada faz parte da carroceria; o carregador de bordo continua como peça ilustrativa.
       carroceria: [/tomada_recarga/i],
     },
     // Ajustes finos de material (nome do material no GLB). clearCoat = verniz, só fora do perfil leve.
+    // Realismo: o arquivo do Sketchfab marca pneus, plásticos, couro e tecido como ~60% "metálicos" —
+    // por isso tudo parecia plástico cromado. Materiais não metálicos voltam a metálico 0, com a
+    // rugosidade de cada acabamento. Cores conforme o Dolphin do showroom virtual da BYD.
     materials: {
-      // Prata metálico com verniz (o arquivo original vem em azul). Também pinta os insertos das rodas.
-      D_Paint_Color: { color: "#c4c8cd", metallic: 0.8, roughness: 0.3, clearCoat: { intensity: 1, roughness: 0.05 } },
-      // Teto e colunas pretos: no arquivo vêm quase espelhados (o anel de LED virava uma mancha no teto).
+      // Prata metálico com verniz (o arquivo original vem em azul).
+      D_Paint_Color: { color: "#bcc1c6", metallic: 0.85, roughness: 0.28, clearCoat: { intensity: 1, roughness: 0.04 } },
+      // Teto e colunas em preto brilhante.
       D_Color_2: { metallic: 0.5, roughness: 0.24, clearCoat: { intensity: 0.8, roughness: 0.08 } },
+      // Filetes laranja na saia lateral e nos cantos dos para-choques.
+      D_M_Color: { color: "#e2581f", metallic: 0.35, roughness: 0.32, clearCoat: { intensity: 0.8, roughness: 0.06 } },
+      // Insertos das rodas (separados da pintura pelo preparar-dolphin): grafite, como nas rodas do Dolphin.
+      D_Paint_Roda: { color: "#3a3f45", metallic: 0.6, roughness: 0.35 },
+      D_tire: { metallic: 0, roughness: 0.88 },
+      D_Plastic: { metallic: 0.3, roughness: 0.38 }, // aros, grade, peças técnicas
+      D_Plastic_S: { metallic: 0.05, roughness: 0.26 }, // molduras pretas brilhantes das janelas
+      D_col_plas: { metallic: 0, roughness: 0.62 }, // revestimento preto das soleiras
+      D_PlasIN: { metallic: 0, roughness: 0.58 },
+      D_Plastic_N_2: { metallic: 0, roughness: 0.72 },
+      phong6: { metallic: 0, roughness: 0.7 },
+      D_carpet: { metallic: 0, roughness: 0.95 },
+      D_Roof: { metallic: 0, roughness: 0.9 }, // forro do teto
+      D_Cuero_1: { color: "#3d5875", metallic: 0, roughness: 0.5 }, // azul do interior, mais sóbrio que o do arquivo
+      D_Cuero_2: { metallic: 0, roughness: 0.5 },
+      D_Cuero_3: { metallic: 0, roughness: 0.52 },
+      D_Cuero_4: { metallic: 0, roughness: 0.52 },
+      D_Til: { metallic: 0, roughness: 0.85 }, // tecido perfurado dos bancos
+      D_Til_2: { metallic: 0, roughness: 0.85 },
+      D_Orange_ST: { metallic: 0, roughness: 0.7 }, // costuras
+      D_Dashboard: { color: "#3b5e84", metallic: 0.15, roughness: 0.4 },
+      D_orange: { metallic: 0.15, roughness: 0.4 },
     },
     notes: {
       bateria:
@@ -122,6 +149,11 @@ export const VEHICLE = {
 };
 
 export const SHOWROOM = {
+  /**
+   * Aparência (src/scene/theme.js): "realista" — estúdio claro e neutro, como o showroom virtual
+   * da BYD — ou "futurista" — fundo escuro com LEDs ciano. Teste o outro com ?tema= na URL.
+   */
+  theme: "realista",
   platformHeight: 0.12,
   /** Folga entre o carro e a borda da plataforma (m). */
   platformMargin: 0.8,

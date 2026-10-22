@@ -67,7 +67,9 @@ gatilho. Controles/mãos são detectados sozinhos e as dicas do painel mudam con
   de alumínio no eixo dianteiro — motor e redutor (com semieixos e coifas) embaixo, caixa da eletrônica em cima com
   tampa parafusada e etiqueta amarela de alta tensão, carregador de bordo no nível elevado da tampa e cabo laranja
   descendo até a frente da bateria (`powertrain: "8em1"` no config). As peças continuam separadas: cada uma é
-  selecionável e se afasta na vista explodida. Bateria em bandeja de alumínio com módulos; radiador com reservatório rosa.
+  selecionável e se afasta na vista explodida. A bateria segue a **Blade** da BYD (`battery: "blade"`): sem módulos,
+  com lâminas longas que atravessam o pacote lado a lado, terminais de cobre nas pontas, barramentos e bandeja escura.
+  Radiador com reservatório rosa.
   No raio X elas ganham um leve brilho na cor do código (bateria azul, motor ciano, inversor laranja).
   Tudo é geometria procedural (sem arquivos extras), com thin instances e cor por vértice: ~10 draw calls a mais só
   com o raio X ligado.
@@ -203,8 +205,9 @@ pintura numa malha, todo o plástico em outra, nomes em código), e o app reconh
 (`scripts/preparar-dolphin.mjs`) separa cada malha em componentes conexos e os distribui, pelo material e pela
 posição, em conjuntos nomeados: `carroceria` (com `headlight_*`, `taillight_*` e a `tomada_recarga`), as quatro
 portas, `porta_malas`, as quatro rodas (pneu, aro e freio), `interior` (com o `volante`, que posiciona o banco do
-motorista), `vidros` e `chassi`. A porta traseira e a tampa traseira vêm fundidas à carroceria no original e são
-recortadas triângulo a triângulo. Também aplica as transformações e deixa o carro em metros, com o entre-eixos real
+motorista), `vidros` e `chassi`. A porta traseira e a tampa traseira vêm fundidas à carroceria no original: os
+triângulos da borda são cortados exatamente nos planos do recorte (posição, normal e UV interpolados), então a
+abertura fica com borda reta, sem serrilhado. Também aplica as transformações e deixa o carro em metros, com o entre-eixos real
 (2,70 m). Rode com `--debug` para listar o que caiu em cada peça.
 O decodificador meshopt é servido localmente (`public/vendor/meshopt_decoder.js`). Guarde os originais em
 `modelos-originais/` (pasta ignorada pelo git).
@@ -230,6 +233,18 @@ raiz do domínio. O build de produção também pode ser testado localmente: `np
 carregamento → **Entrar em VR** → testar gatilho no painel 3D, teleporte (thumbstick para frente), giro de 45°,
 botão B/Y e, sem controles, a pinça e o menu de pulso.
 
+## Aparência do showroom (tema)
+
+`SHOWROOM.theme` em `src/config.js` escolhe o visual (cores e materiais em `src/scene/theme.js`):
+
+- **`realista`** (padrão): estúdio claro e neutro, inspirado no showroom virtual da BYD — piso cinza polido, parede
+  curva clara com faixas de luz, plataforma cinza, luzes brancas e letreiro escuro na parede ("EM EXPOSIÇÃO · BYD
+  DOLPHIN"). O carro aparece com as cores reais, sem o tom azulado das luzes coloridas.
+- **`futurista`**: o visual original — fundo escuro, piso com grade luminosa, LEDs ciano/azuis e título holográfico.
+
+Para comparar sem editar o config: `?tema=futurista` ou `?tema=realista` na URL. A montagem é a mesma nos dois
+(plataforma, totem, placa em VR, teleporte); o realista acrescenta só a parede curva (1 draw call).
+
 ## Identificação da escola
 
 O totem do showroom, a placa em VR e a tela de carregamento usam `INSTITUTION` em `src/config.js`.
@@ -240,11 +255,19 @@ O logotipo é desenhado pelo app; para usar a **arte oficial**, salve-a em `publ
 
 Tudo que depende do modelo fica em `VEHICLE_MODELS` (`src/config.js`): arquivo, nome, selo, crédito do autor,
 orientação, tração (`drivetrain`: `"front"`, `"rear"` ou `"awd"`), formato do trem de força ilustrativo
-(`powertrain: "8em1"` para o bloco único da BYD; sem ele, peças separadas), posição da porta de recarga e padrões
-extras de nomes de peças, além de ajustes finos de material (`materials`: cor, verniz, metálico, rugosidade).
+(`powertrain: "8em1"` para o bloco único da BYD; sem ele, peças separadas), bateria ilustrativa (`battery: "blade"`;
+sem ele, módulos), posição da porta de recarga e padrões extras de nomes de peças, além de ajustes finos de material
+(`materials`: cor, verniz, metálico, rugosidade).
 
-**Cor da pintura:** em `materials.D_Paint_Color.color` (hex). O Dolphin está em prata metálico (`#c4c8cd`, metálico
-0,8, rugosidade 0,3, com verniz); o arquivo original vem em azul. A mesma cor pinta os insertos das rodas.
+**Cores e acabamentos do Dolphin** (`materials`, pelo nome do material no GLB), conforme o Dolphin do showroom
+virtual da BYD:
+
+- Pintura **prata metálico** (`D_Paint_Color`, `#bcc1c6`, com verniz) — o arquivo original vem em azul; teto preto
+  brilhante (`D_Color_2`); **filetes laranja** na saia lateral e nos cantos dos para-choques (`D_M_Color`).
+- Rodas: insertos **grafite** (`D_Paint_Roda`, material separado da pintura pelo `preparar-dolphin`, então trocar a
+  cor do carro não pinta as rodas).
+- O arquivo do Sketchfab marca pneus, plásticos, couro e tecido como ~60% metálicos (pareciam plástico cromado):
+  esses materiais voltam a metálico 0, com a rugosidade de cada acabamento. O azul do interior ficou mais sóbrio.
 
 1. Otimize o GLB (seção acima) e salve em `public/models/`.
 2. A frente é detectada sozinha pelos faróis/lanternas (`autoFront`). Se ainda aparecer virado, ajuste ao vivo
@@ -306,6 +329,7 @@ src/
 │   ├── createScene.js      motor, cena, câmera orbital, vistas predefinidas e enquadramentos
 │   ├── cabinView.js        vista interna: entrar no carro pela porta do motorista (desktop/celular)
 │   ├── environment.js      showroom: piso, plataforma giratória, LEDs, halo, título, placa e totem da escola
+│   ├── theme.js            temas do showroom: realista (estúdio claro, padrão) e futurista (neon)
 │   ├── lighting.js         ambiente de estúdio + luzes direcionais + sombras
 │   ├── presentation.js     tween e animação de abertura
 │   └── quality.js          perfis de qualidade e redução automática se o FPS cair
@@ -360,6 +384,7 @@ modelos-originais/           GLBs originais, fora do git
 
 #   e l e t r i c o  
  #   e l e t r i c o  
+ #   d o l p h i n  
  #   d o l p h i n  
  #   d o l p h i n  
  #   d o l p h i n  

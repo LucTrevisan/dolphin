@@ -4,6 +4,7 @@ import {
   DynamicTexture,
   GlowLayer,
   Matrix,
+  Mesh,
   MeshBuilder,
   MirrorTexture,
   PBRMaterial,
@@ -16,14 +17,16 @@ import {
 } from "../babylon.js";
 import { APP, INSTITUTION, PALETTE, SHOWROOM, XR } from "../config.js";
 import { easeInOutCubic, tween } from "./presentation.js";
+import { THEME } from "./theme.js";
 
 const FONT = "'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
 const hex = (h) => Color3.FromHexString(h);
 
 /**
- * Showroom futurista construído só com primitivas + texturas desenhadas em canvas
- * (nenhum arquivo externo além do mapa de ambiente). Tudo é dimensionado a partir
- * das medidas do carro, então se adapta ao modelo definitivo sem ajustes.
+ * Showroom construído só com primitivas + texturas desenhadas em canvas (nenhum arquivo
+ * externo além do mapa de ambiente). Tudo é dimensionado a partir das medidas do carro,
+ * então se adapta ao modelo definitivo sem ajustes. Cores e materiais vêm do tema
+ * (theme.js): futurista (escuro, LEDs ciano) ou realista (estúdio claro, parede curva).
  *
  * Grupos emissivos (para a animação de abertura): floor, platform, pillars, halo, title.
  */
@@ -50,17 +53,37 @@ export function createShowroom(scene, quality, { dims, turntable, vehicle, spawn
   // ---------------------------------------------------------------- piso
   const floor = MeshBuilder.CreateGround("showroom-floor", { width: SHOWROOM.floorSize, height: SHOWROOM.floorSize }, scene);
   const floorMat = new PBRMaterial("mat-floor", scene);
-  floorMat.albedoColor = hex("#070d18").toLinearSpace();
+  floorMat.albedoColor = hex(THEME.floor.color).toLinearSpace();
   floorMat.metallic = 0;
-  floorMat.roughness = 0.36; // reflexo sutil do ambiente em ângulos rasantes
-  floorMat.environmentIntensity = 0.55;
-  const grid = createGridTexture(scene);
-  grid.uScale = grid.vScale = SHOWROOM.floorSize / 2; // células de 2 m
-  floorMat.emissiveTexture = grid;
-  const floorGlow = hex(PALETTE.blue).toLinearSpace().scale(0.55);
-  floorMat.emissiveColor = floorGlow.clone();
-  emissiveSetters.floor.push((k) => floorMat.emissiveColor.copyFrom(floorGlow.scale(k)));
+  floorMat.roughness = THEME.floor.roughness; // reflexo do ambiente em ângulos rasantes
+  floorMat.environmentIntensity = THEME.floor.environment;
+  if (THEME.floor.grid) {
+    const grid = createGridTexture(scene);
+    grid.uScale = grid.vScale = SHOWROOM.floorSize / 2; // células de 2 m
+    floorMat.emissiveTexture = grid;
+    const floorGlow = hex(THEME.floor.grid).toLinearSpace().scale(THEME.floor.gridLevel);
+    floorMat.emissiveColor = floorGlow.clone();
+    emissiveSetters.floor.push((k) => floorMat.emissiveColor.copyFrom(floorGlow.scale(k)));
+  }
   floor.material = floorMat;
+
+  // Parede curva (ciclorama) em volta do showroom, vista por dentro — só no tema realista.
+  let wall = null;
+  if (THEME.wall) {
+    const wallRadius = R + 9;
+    wall = MeshBuilder.CreateCylinder(
+      "showroom-wall",
+      { height: THEME.wall.height, diameter: wallRadius * 2, tessellation: 96, cap: Mesh.NO_CAP, sideOrientation: Mesh.BACKSIDE },
+      scene,
+    );
+    wall.position.y = THEME.wall.height / 2;
+    const wallMat = new PBRMaterial("mat-wall", scene);
+    wallMat.albedoColor = hex(THEME.wall.color).toLinearSpace();
+    wallMat.metallic = 0;
+    wallMat.roughness = 0.85;
+    wall.material = wallMat;
+    blockers.add(wall);
+  }
 
   // ---------------------------------------------------------------- plataforma
   const base = MeshBuilder.CreateCylinder(
@@ -70,9 +93,9 @@ export function createShowroom(scene, quality, { dims, turntable, vehicle, spawn
   );
   base.position.y = H / 2;
   const baseMat = new PBRMaterial("mat-platform-base", scene);
-  baseMat.albedoColor = hex("#0b1422").toLinearSpace();
-  baseMat.metallic = 0.8;
-  baseMat.roughness = 0.3;
+  baseMat.albedoColor = hex(THEME.platformBase.color).toLinearSpace();
+  baseMat.metallic = THEME.platformBase.metallic;
+  baseMat.roughness = THEME.platformBase.roughness;
   base.material = baseMat;
   blockers.add(base);
 
@@ -82,19 +105,19 @@ export function createShowroom(scene, quality, { dims, turntable, vehicle, spawn
   top.parent = turntable;
   top.position.y = 0.0015;
   const topMat = new StandardMaterial("mat-platform-top", scene);
-  topMat.diffuseColor = hex("#0a1322");
-  topMat.specularColor = new Color3(0.32, 0.38, 0.45);
+  topMat.diffuseColor = hex(THEME.platformTop.color);
+  topMat.specularColor = hex(THEME.platformTop.specular);
   topMat.specularPower = 96;
-  const dial = createDialTexture(scene);
+  const dial = createDialTexture(scene, THEME.platformTop.dial);
   topMat.emissiveTexture = dial;
-  emissiveSetters.platform.push((k) => (dial.level = 0.9 * k));
+  emissiveSetters.platform.push((k) => (dial.level = THEME.platformTop.dialLevel * k));
   top.material = topMat;
 
   let mirror = null;
   if (quality.mirror) {
     mirror = new MirrorTexture("mirror-platform", quality.mirrorSize, scene, true);
     mirror.mirrorPlane = new Plane(0, -1, 0, H + 0.0015);
-    mirror.level = 0.34;
+    mirror.level = THEME.platformTop.mirror;
     mirror.adaptiveBlurKernel = 20;
     topMat.reflectionTexture = mirror;
   }
@@ -118,43 +141,46 @@ export function createShowroom(scene, quality, { dims, turntable, vehicle, spawn
   // Anéis de LED.
   const ledTop = createRing("platform-led-top", { diameter: R * 2 - 0.014, thickness: 0.024 }, scene);
   ledTop.position.y = H + 0.004;
-  ledTop.material = emissiveMaterial("mat-led-cyan", PALETTE.cyan, "platform");
+  ledTop.material = emissiveMaterial("mat-led-top", THEME.ledTop, "platform");
   const ledBase = createRing("platform-led-base", { diameter: R * 2 + 0.17, thickness: 0.035 }, scene);
   ledBase.position.y = 0.016;
-  ledBase.material = emissiveMaterial("mat-led-blue", PALETTE.blue, "platform");
+  ledBase.material = emissiveMaterial("mat-led-base", THEME.ledBase, "platform");
   glowMeshes.push(ledTop, ledBase);
   mirrorMeshes.push(ledTop);
 
-  // Luz "derramada" no piso ao redor da plataforma (gradiente aditivo, 1 draw call).
-  const spillSize = (R + 3.4) * 2;
-  const spill = MeshBuilder.CreateGround("platform-spill", { width: spillSize, height: spillSize }, scene);
-  spill.position.y = 0.003;
-  spill.isPickable = false;
-  const spillMat = new StandardMaterial("mat-platform-spill", scene);
-  spillMat.disableLighting = true;
-  spillMat.diffuseColor = Color3.Black();
-  spillMat.specularColor = Color3.Black();
-  const spillTex = createSpillTexture(scene, R / (R + 3.4));
-  spillMat.emissiveTexture = spillTex;
-  spillMat.opacityTexture = spillTex;
-  spillMat.alphaMode = Constants.ALPHA_ADD;
-  spillMat.fogEnabled = false;
-  spill.material = spillMat;
-  emissiveSetters.platform.push((k) => (spillTex.level = k));
+  // Luz "derramada" no piso ao redor da plataforma (gradiente aditivo, 1 draw call) — tema futurista.
+  let spill = null;
+  if (THEME.spill) {
+    const spillSize = (R + 3.4) * 2;
+    spill = MeshBuilder.CreateGround("platform-spill", { width: spillSize, height: spillSize }, scene);
+    spill.position.y = 0.003;
+    const spillMat = new StandardMaterial("mat-platform-spill", scene);
+    spillMat.disableLighting = true;
+    spillMat.diffuseColor = Color3.Black();
+    spillMat.specularColor = Color3.Black();
+    const spillTex = createSpillTexture(scene, R / (R + 3.4), THEME.spill);
+    spillMat.emissiveTexture = spillTex;
+    spillMat.opacityTexture = spillTex;
+    spillMat.alphaMode = Constants.ALPHA_ADD;
+    spillMat.fogEnabled = false;
+    spill.material = spillMat;
+    emissiveSetters.platform.push((k) => (spillTex.level = k));
+  }
 
   // ---------------------------------------------------------------- halo no teto
   const halo = createRing("ceiling-halo", { diameter: R * 2.1, thickness: 0.085, sides: 10 }, scene);
   halo.position.y = 4.4;
-  halo.material = emissiveMaterial("mat-halo", "#c9f6ff", "halo", 0.95);
+  halo.material = emissiveMaterial("mat-halo", THEME.halo, "halo", 0.95);
   const haloInner = createRing("ceiling-halo-inner", { diameter: R * 1.66, thickness: 0.028 }, scene);
   haloInner.position.y = 4.42;
-  haloInner.material = emissiveMaterial("mat-halo-inner", PALETTE.cyan, "halo");
+  haloInner.material = emissiveMaterial("mat-halo-inner", THEME.haloInner, "halo");
   glowMeshes.push(halo, haloInner);
   mirrorMeshes.push(halo, haloInner);
 
   // ---------------------------------------------------------------- pilares de luz (thin instances = 1 draw call)
+  // No tema realista ficam rente à parede curva, como faixas de luz verticais.
   const pillars = MeshBuilder.CreateBox("light-pillars", { width: 0.07, depth: 0.07, height: 3.4 }, scene);
-  pillars.material = emissiveMaterial("mat-pillars", PALETTE.blue, "pillars", 0.9);
+  pillars.material = emissiveMaterial("mat-pillars", THEME.pillars, "pillars", 0.9);
   const pillarCount = 18;
   const pillarRadius = R + 8.5;
   for (let i = 0; i < pillarCount; i++) {
@@ -166,13 +192,15 @@ export function createShowroom(scene, quality, { dims, turntable, vehicle, spawn
   glowMeshes.push(pillars);
   mirrorMeshes.push(pillars);
 
-  // ---------------------------------------------------------------- título holográfico (atrás do carro)
+  // ---------------------------------------------------------------- título (atrás do carro)
+  // Holograma aditivo no tema futurista; letreiro escuro na parede curva no realista.
   // Terceira linha: o veículo em exposição (marca e modelo, de VEHICLE_MODELS[].label).
+  const sign = THEME.title === "letreiro";
   const titleTexHeight = vehicle ? 440 : 384;
-  const titleTex = createTitleTexture(scene, titleTexHeight, vehicle?.model.label);
-  const titleWidth = 6.2;
+  const titleTex = createTitleTexture(scene, titleTexHeight, vehicle?.model.label, { sign });
+  const titleWidth = sign ? 7.4 : 6.2;
   const title = MeshBuilder.CreatePlane("holo-title", { width: titleWidth, height: titleWidth * (titleTexHeight / 2048) }, scene);
-  title.position = new Vector3(0, H + 1.95, -(R + 5.6));
+  title.position = sign ? new Vector3(0, 2.7, -(R + 8.2)) : new Vector3(0, H + 1.95, -(R + 5.6));
   title.rotation.y = Math.PI; // face visível voltada para +Z (frente do carro)
   const titleMat = new StandardMaterial("mat-holo-title", scene);
   titleMat.disableLighting = true;
@@ -180,7 +208,7 @@ export function createShowroom(scene, quality, { dims, turntable, vehicle, spawn
   titleMat.specularColor = Color3.Black();
   titleMat.emissiveTexture = titleTex;
   titleMat.opacityTexture = titleTex;
-  titleMat.alphaMode = Constants.ALPHA_ADD;
+  titleMat.alphaMode = sign ? Constants.ALPHA_COMBINE : Constants.ALPHA_ADD;
   titleMat.fogEnabled = false;
   title.material = titleMat;
   title.isPickable = false;
@@ -250,16 +278,17 @@ export function createShowroom(scene, quality, { dims, turntable, vehicle, spawn
     }
     plaque.setInfo(vehicle.info);
   }
+  if (wall) mirrorMeshes.push(wall);
   if (mirror) mirror.renderList.push(...mirrorMeshes);
 
   let glow = null;
   if (quality.glow) {
     glow = new GlowLayer("glow", scene, { mainTextureRatio: 0.5, blurKernelSize: quality.glowBlur });
-    glow.intensity = 0.75;
+    glow.intensity = THEME.glowIntensity;
     for (const m of glowMeshes) glow.addIncludedOnlyMesh(m);
   }
 
-  for (const m of [spill, contact, ledBase, ledTop, halo, haloInner, base]) m.isPickable = m === base;
+  for (const m of [spill, contact, ledBase, ledTop, halo, haloInner, base]) if (m) m.isPickable = m === base;
 
   const turntableController = createTurntableController(scene, turntable, SHOWROOM.turntableDegPerSecond);
 
@@ -501,8 +530,8 @@ function createInstitutionTotem(scene, position, facingFrom) {
 
   const ledMat = new StandardMaterial("mat-totem-led", scene);
   ledMat.disableLighting = true;
-  ledMat.emissiveColor = hex(PALETTE.cyan);
-  const ledBase = hex(PALETTE.cyan);
+  ledMat.emissiveColor = hex(THEME.totemLed);
+  const ledBase = hex(THEME.totemLed);
   const leds = [-1, 1].map((side) => {
     const led = MeshBuilder.CreateBox(`totem-led-${side}`, { width: 0.022, height: H - 0.2, depth: D + 0.02 }, scene);
     led.parent = root;
@@ -648,7 +677,8 @@ function createGridTexture(scene) {
   return tex;
 }
 
-function createDialTexture(scene) {
+/** Mostrador graduado do tampo; `rgb` é a cor das linhas ("r, g, b"). */
+function createDialTexture(scene, rgb) {
   const size = 1024;
   const c = size / 2;
   const tex = new DynamicTexture("tex-platform-dial", { width: size, height: size }, scene, true);
@@ -660,7 +690,7 @@ function createDialTexture(scene) {
     ctx.setLineDash(dash || []);
     ctx.arc(c, c, r * c, 0, Math.PI * 2);
     ctx.lineWidth = width;
-    ctx.strokeStyle = `rgba(0, 229, 255, ${alpha})`;
+    ctx.strokeStyle = `rgba(${rgb}, ${alpha})`;
     ctx.stroke();
   };
   ring(0.985, 3, 0.55);
@@ -676,7 +706,7 @@ function createDialTexture(scene) {
     ctx.moveTo(c + Math.cos(a) * r0 * c, c + Math.sin(a) * r0 * c);
     ctx.lineTo(c + Math.cos(a) * 0.975 * c, c + Math.sin(a) * 0.975 * c);
     ctx.lineWidth = major ? 4 : 2;
-    ctx.strokeStyle = `rgba(0, 229, 255, ${major ? 0.7 : 0.32})`;
+    ctx.strokeStyle = `rgba(${rgb}, ${major ? 0.7 : 0.32})`;
     ctx.stroke();
   }
   tex.update();
@@ -684,7 +714,7 @@ function createDialTexture(scene) {
   return tex;
 }
 
-function createSpillTexture(scene, innerRatio) {
+function createSpillTexture(scene, innerRatio, rgb) {
   const size = 512;
   const tex = new DynamicTexture("tex-platform-spill", { width: size, height: size }, scene, true);
   tex.hasAlpha = true;
@@ -692,10 +722,10 @@ function createSpillTexture(scene, innerRatio) {
   ctx.clearRect(0, 0, size, size);
   const c = size / 2;
   const g = ctx.createRadialGradient(c, c, innerRatio * c * 0.98, c, c, c);
-  g.addColorStop(0, "rgba(0, 200, 255, 0.55)");
-  g.addColorStop(0.12, "rgba(0, 184, 255, 0.22)");
-  g.addColorStop(0.45, "rgba(0, 150, 255, 0.06)");
-  g.addColorStop(1, "rgba(0, 120, 255, 0)");
+  g.addColorStop(0, `rgba(${rgb}, 0.55)`);
+  g.addColorStop(0.12, `rgba(${rgb}, 0.22)`);
+  g.addColorStop(0.45, `rgba(${rgb}, 0.06)`);
+  g.addColorStop(1, `rgba(${rgb}, 0)`);
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, size, size);
   tex.update();
@@ -721,7 +751,11 @@ function createContactShadowTexture(scene, dims) {
   return tex;
 }
 
-function createTitleTexture(scene, h, vehicleLabel) {
+/**
+ * Título do showroom. Holograma (gradiente azul/ciano com brilho, mistura aditiva) ou, com `sign`,
+ * letreiro de parede: texto grafite sobre fundo transparente, como a sinalização de uma loja.
+ */
+function createTitleTexture(scene, h, vehicleLabel, { sign = false } = {}) {
   const w = 2048;
   const tex = new DynamicTexture("tex-holo-title", { width: w, height: h }, scene, true);
   tex.hasAlpha = true;
@@ -730,32 +764,36 @@ function createTitleTexture(scene, h, vehicleLabel) {
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
 
-  const grad = ctx.createLinearGradient(w * 0.15, 0, w * 0.85, 0);
-  grad.addColorStop(0, PALETTE.blue);
-  grad.addColorStop(0.5, PALETTE.cyan);
-  grad.addColorStop(1, PALETTE.blue);
   ctx.font = `700 150px ${FONT}`;
   setSpacing(ctx, "26px");
-  ctx.shadowColor = "rgba(0, 229, 255, 0.8)";
-  ctx.shadowBlur = 28;
-  ctx.fillStyle = grad;
+  if (sign) {
+    ctx.fillStyle = "#1f252c";
+  } else {
+    const grad = ctx.createLinearGradient(w * 0.15, 0, w * 0.85, 0);
+    grad.addColorStop(0, PALETTE.blue);
+    grad.addColorStop(0.5, PALETTE.cyan);
+    grad.addColorStop(1, PALETTE.blue);
+    ctx.shadowColor = "rgba(0, 229, 255, 0.8)";
+    ctx.shadowBlur = 28;
+    ctx.fillStyle = grad;
+  }
   ctx.fillText(APP.name.toUpperCase(), w / 2, 190);
 
   ctx.shadowBlur = 0;
   ctx.font = `500 50px ${FONT}`;
   setSpacing(ctx, "14px");
-  ctx.fillStyle = "rgba(245, 247, 250, 0.82)";
+  ctx.fillStyle = sign ? "#5b646e" : "rgba(245, 247, 250, 0.82)";
   ctx.fillText(APP.subtitle.toUpperCase(), w / 2, 300);
 
   if (vehicleLabel) {
     ctx.font = `700 46px ${FONT}`;
     setSpacing(ctx, "12px");
-    ctx.fillStyle = PALETTE.cyan;
+    ctx.fillStyle = sign ? "#1f252c" : PALETTE.cyan;
     ctx.fillText(`EM EXPOSIÇÃO · ${vehicleLabel.toUpperCase()}`, w / 2, 392);
   }
   setSpacing(ctx, "0px");
 
-  ctx.fillStyle = "rgba(0, 229, 255, 0.7)";
+  ctx.fillStyle = sign ? "#1f252c" : "rgba(0, 229, 255, 0.7)";
   ctx.fillRect(w / 2 - 260, 236, 520, 3);
   tex.update();
   return tex;

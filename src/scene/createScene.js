@@ -8,8 +8,9 @@ import {
   Scene,
   Vector3,
 } from "../babylon.js";
-import { PALETTE, SHOWROOM } from "../config.js";
+import { SHOWROOM } from "../config.js";
 import { easeInOutCubic, tween } from "./presentation.js";
+import { THEME } from "./theme.js";
 
 /**
  * Cria o motor WebGL. A resolução interna é limitada pelo perfil de qualidade
@@ -45,27 +46,27 @@ export function applyResolution(engine, quality) {
 
 export function createScene(engine) {
   const scene = new Scene(engine);
-  const bg = Color3.FromHexString(PALETTE.background);
+  const bg = Color3.FromHexString(THEME.background);
   scene.clearColor = new Color4(bg.r, bg.g, bg.b, 1);
 
-  // Neblina na cor do fundo: o piso "some" no escuro, sem bordas visíveis.
+  // Neblina na cor do fundo: o piso "some" no horizonte, sem bordas visíveis.
   scene.fogMode = Scene.FOGMODE_EXP2;
-  scene.fogDensity = 0.03;
+  scene.fogDensity = THEME.fogDensity;
   scene.fogColor = bg.clone();
 
   // Tone mapping neutro (Khronos PBR Neutral) preserva as cores originais do modelo.
   const ip = scene.imageProcessingConfiguration;
   ip.toneMappingEnabled = true;
   ip.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_KHR_PBR_NEUTRAL;
-  ip.exposure = 1.05;
-  ip.contrast = 1.12;
+  ip.exposure = THEME.exposure;
+  ip.contrast = THEME.contrast;
 
   // Mapa de ambiente de estúdio servido localmente (sem dependência de CDN):
   // é ele que gera os reflexos realistas nos materiais PBR do carro.
   const env = CubeTexture.CreateFromPrefilteredData(SHOWROOM.environmentTexture, scene);
   env.name = "studio-environment";
   scene.environmentTexture = env;
-  scene.environmentIntensity = SHOWROOM.environmentIntensity;
+  scene.environmentIntensity = THEME.environmentIntensity;
 
   return scene;
 }

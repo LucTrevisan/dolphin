@@ -176,6 +176,7 @@ async function boot() {
         missing,
         drivetrain: vehicle.model.drivetrain,
         powertrain: vehicle.model.powertrain,
+        battery: vehicle.model.battery,
         states, // brilho de seleção e de raio X também nas peças ilustrativas
       });
       Object.assign(componentItems, components, schematics.items);

@@ -1,34 +1,36 @@
 import { Color3, DirectionalLight, HemisphericLight, ShadowGenerator, Vector3 } from "../babylon.js";
-import { PALETTE, SHOWROOM } from "../config.js";
+import { THEME } from "./theme.js";
 
 /**
- * Iluminação de showroom: ambiente de estúdio (IBL) + luz principal + recortes
- * coloridos azul/ciano. Usa apenas luzes direcionais — sem atenuação por distância,
- * comportam-se igual em materiais PBR e Standard e custam pouco no Quest.
+ * Iluminação de showroom: ambiente de estúdio (IBL) + luz principal + recorte e preenchimento.
+ * As cores vêm do tema (theme.js): azul/ciano no futurista, brancas no realista. Usa apenas luzes
+ * direcionais — sem atenuação por distância, comportam-se igual em materiais PBR e Standard e
+ * custam pouco no Quest.
  */
 export function createLighting(scene, quality) {
   const hemi = new HemisphericLight("light-ambient", new Vector3(0, 1, 0), scene);
-  hemi.diffuse = Color3.FromHexString("#cfe6ff");
-  hemi.groundColor = Color3.FromHexString("#0a1626");
+  const L = THEME.lights;
+  hemi.diffuse = Color3.FromHexString(L.hemi.color);
+  hemi.groundColor = Color3.FromHexString(L.hemi.ground);
   hemi.specular = Color3.Black();
 
   // Luz principal, de cima e levemente à frente-direita; é a única que projeta sombra.
   const key = new DirectionalLight("light-key", new Vector3(-0.3, -1, -0.35).normalize(), scene);
   key.position = new Vector3(5, 12, 6);
-  key.diffuse = Color3.FromHexString("#f4f8ff");
+  key.diffuse = Color3.FromHexString(L.key.color);
 
-  // Recorte ciano por trás do carro: desenha a silhueta contra o fundo escuro.
-  const rim = new DirectionalLight("light-rim-cyan", new Vector3(-0.55, -0.35, 0.75).normalize(), scene);
-  rim.diffuse = Color3.FromHexString(PALETTE.cyan);
-  rim.specular = Color3.FromHexString(PALETTE.cyan);
+  // Recorte por trás do carro: desenha a silhueta contra o fundo.
+  const rim = new DirectionalLight("light-rim", new Vector3(-0.55, -0.35, 0.75).normalize(), scene);
+  rim.diffuse = Color3.FromHexString(L.rim.color);
+  rim.specular = Color3.FromHexString(L.rim.color);
 
-  // Preenchimento azul elétrico pelo lado oposto (desligado no perfil leve).
-  const fill = new DirectionalLight("light-fill-blue", new Vector3(0.8, -0.25, -0.55).normalize(), scene);
-  fill.diffuse = Color3.FromHexString(PALETTE.blue);
-  fill.specular = Color3.FromHexString(PALETTE.blue).scale(0.6);
+  // Preenchimento pelo lado oposto (desligado no perfil leve).
+  const fill = new DirectionalLight("light-fill", new Vector3(0.8, -0.25, -0.55).normalize(), scene);
+  fill.diffuse = Color3.FromHexString(L.fill.color);
+  fill.specular = Color3.FromHexString(L.fill.color).scale(0.6);
   fill.setEnabled(quality.fillLight);
 
-  const base = { hemi: 0.42, key: 2.3, rim: 1.1, fill: 0.55, env: SHOWROOM.environmentIntensity };
+  const base = { hemi: L.hemi.intensity, key: L.key.intensity, rim: L.rim.intensity, fill: L.fill.intensity, env: THEME.environmentIntensity };
 
   let shadowGenerator = null;
   if (quality.shadows) {
@@ -64,7 +66,7 @@ export function createLighting(scene, quality) {
     get level() {
       return level;
     },
-    /** Liga sombras do carro e restringe os recortes coloridos à carroceria. */
+    /** Liga sombras do carro e restringe recorte e preenchimento à carroceria. */
     attachVehicle(vehicleMeshes, receivers) {
       if (!vehicleMeshes.length) return;
       rim.includedOnlyMeshes = vehicleMeshes.slice();
